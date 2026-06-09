@@ -11,9 +11,11 @@ from PIL import Image, ImageTk, ImageEnhance, ImageDraw
 import ctypes
 import pygame
 
-# --------------------------------------------------------------------
+# ----------------Import para los demás programas---------------------
 
-import config
+from programs import config
+
+# --------------------------------------------------------------------
 
 # Crea el root
 root = tk.Tk()
@@ -35,7 +37,12 @@ menu = tk.Frame(root, bg='black')
 # Inicializa la configuracion para conectar los ajustes
 config.inicializar(root, menu)
 
+def abrir_configuracion():
+    config.abrir()
 
+tk.Button(menu, text='Ir a configuracion',command=abrir_configuracion).pack()
+
+# Mostrar el menu
 menu.pack(fill='both', expand=True)
 
 # Comienza el mainloop
