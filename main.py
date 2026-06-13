@@ -37,16 +37,28 @@ menu = tk.Frame(root, bg='black')
 # Inicializa la configuracion para conectar los ajustes
 config.inicializar(root, menu)
 
+# Abre la configuracion del juego
 def abrir_configuracion():
     config.abrir()
 
+# Abre la parte del login directamente, si algun usuario no tiene cuenta habrá una parte para registrarse o asi
 def abrir_loggeo():
     loggeo = tk.Frame(root, bg='black')
     menu.forget()
     loggeo.pack(fill='both', expand=True)
 
-tk.Button(menu, text='Ir a configuracion',command=abrir_configuracion).pack()
-tk.Button(menu, text='Jugar',command=abrir_loggeo).pack()
+    # Usuario
+    tk.Label(loggeo, text='Ingresa tu usuario:').pack(pady=20)
+    userInput = tk.Entry(loggeo, font=('Arial', 24), justify='center').pack(pady=10)
+
+    # Contraseña
+    tk.Label(loggeo, text='Ingresa tu contraseña:').pack(pady=20)
+    passwordInput = tk.Entry(loggeo, show="*", font=('Arial', 24), justify='center').pack(pady=10)
+
+# Botones para jugar y abrir la configuracion
+tk.Button(menu, text='Jugar',command=abrir_loggeo).pack(pady=100)
+
+tk.Button(menu, text='Ir a configuracion',command=abrir_configuracion).pack(pady=20)
 
 # Mostrar el menu
 menu.pack(fill='both', expand=True)
