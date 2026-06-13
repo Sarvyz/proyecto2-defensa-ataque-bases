@@ -40,7 +40,13 @@ config.inicializar(root, menu)
 def abrir_configuracion():
     config.abrir()
 
+def abrir_loggeo():
+    loggeo = tk.Frame(root, bg='black')
+    menu.forget()
+    loggeo.pack(fill='both', expand=True)
+
 tk.Button(menu, text='Ir a configuracion',command=abrir_configuracion).pack()
+tk.Button(menu, text='Jugar',command=abrir_loggeo).pack()
 
 # Mostrar el menu
 menu.pack(fill='both', expand=True)
