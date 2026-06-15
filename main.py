@@ -157,7 +157,7 @@ def guardar_usuario_contraseña(user, password):
         datos = []
 
     # agrega el usuario y la contraseña a todos los datos que ya existian antes
-    datos.append([user, password])
+    datos.append([user, password, 0, 0])
 
     # ahora a escribir sobre el json
     with open('data/USER_INFO.json', 'w') as f:
