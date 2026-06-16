@@ -239,7 +239,6 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
     registereo.pack_forget()
     
     # Crear el frame y el canvas
-
     canvas_frame = tk.Frame(root, bg='black')
     canvas_frame.pack(fill='both', expand=True)
 
@@ -247,20 +246,62 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
     canvas.pack(fill='both', expand=True)
 
     # Colores provisionales y que tambien van a aparecer en caso de que alguna imagen no carguen
-
     COLORES = {
         'medieval':      {'normal': '#4A90D9', 'oscuro': '#1A3A5C'},
         'jardin_zombie': {'normal': '#4CAF50', 'oscuro': '#1B3A1C'},
         'robotico':      {'normal': '#9B59B6', 'oscuro': '#3D1A4A'},
     }
 
-    # Estas son las facciones y el orden de las capas, despues eso va variando
+    # Offsets para ajustar la posicion de cada imagen dentro de su triangulo
+    # Valores positivos mueven la imagen hacia abajo/derecha, negativos hacia arriba/izquierda
+    OFFSET_IMGS = [
+        [0,   0],   # jardin_zombie
+        [-200, 0],   # medieval      ← cambia el primer valor para mover horizontalmente
+        [0,   0],   # robotico
+    ]
 
+    # Estas son las facciones y el orden de las capas, despues eso va variando
     FACCIONES    = ['medieval', 'jardin_zombie', 'robotico']
     ORDEN_CAPAS  = ['jardin_zombie', 'medieval', 'robotico']
+
+    # Cargar imagenes según el turno (orden: jardin_zombie, medieval, robotico — igual que ORDEN_CAPAS)
+    if turno == 'atacante':
+        rutas_normal = [
+            'assets/img/jardin_atacante.png',
+            'assets/img/medieval_atacante.png',
+            'assets/img/robotico_atacante.png',
+        ]
+    else:
+        rutas_normal = [
+            'assets/img/jardin_defensor.png',
+            'assets/img/medieval_defensor.png',
+            'assets/img/robotico_defensor.png',
+        ]
+
+    rutas_oscuro = [
+        'assets/img/jardin_oscuro.png',
+        'assets/img/medieval_oscuro.png',
+        'assets/img/robotico_oscuro.png',
+    ]
+
+    imgs_raw_normal = []
+    for ruta in rutas_normal:
+        try:
+            imgs_raw_normal.append(Image.open(ruta))
+        except:
+            imgs_raw_normal.append(None)  # si no carga, queda None
+
+    imgs_raw_oscuro = []
+    for ruta in rutas_oscuro:
+        try:
+            imgs_raw_oscuro.append(Image.open(ruta))
+        except:
+            imgs_raw_oscuro.append(None)
+
+    # Se llenan al dibujar
+    imgs_tk = [None, None, None]
     
     # Posicion de los vertices de los triangulos dependiendo de la faccion
-
     def get_triangulo(faccion, w, h):
         if faccion == 'medieval':
             # Esquina sup-izq, esquina inf-izq, inf-medio
@@ -285,7 +326,6 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
     ZOOM_MIN = 1.0
 
     # Funcion para sacar los nuevos puntos del triangulo tras el zoom
-
     def puntos_con_zoom(faccion, w, h, z):
         pts = get_triangulo(faccion, w, h)
         xs = pts[0::2]
@@ -299,21 +339,88 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
             nuevos += [nx, ny]
         return nuevos
 
-    # Funcion para dibujar los triangulos y el header que dice 'elige tu faccion: atacante/defensor'
+    # Cache de imagenes ya procesadas para no recalcular cada frame
+    imgs_cache = [None, None, None]
+    ultimo_size = [0, 0]
+
     def dibujar(w, h):
         canvas.delete('all')
 
-        for faccion in ORDEN_CAPAS:
+        # Solo recalcula las imagenes si cambio el tamaño de la ventana
+        if w != ultimo_size[0] or h != ultimo_size[1]:
+            ultimo_size[0] = w
+            ultimo_size[1] = h
 
-            # La que se pondra en oscuro y no va a hacer zoom va a ser la que haya elegido el atacante
+            for i, faccion in enumerate(ORDEN_CAPAS):
+                oscuro  = (faccion == faccion_atacante)
+                img_raw = imgs_raw_oscuro[i] if oscuro else imgs_raw_normal[i]
+
+                if img_raw is None:
+                    imgs_cache[i] = None
+                    continue
+
+                pts = get_triangulo(faccion, w, h)
+                xs = pts[0::2]
+                ys = pts[1::2]
+                x_min = int(min(xs))
+                y_min = int(min(ys))
+                x_max = int(max(xs))
+                y_max = int(max(ys))
+                ancho_tri = x_max - x_min
+                alto_tri  = y_max - y_min
+
+                img = img_raw.copy().resize((ancho_tri, alto_tri), Image.LANCZOS).convert('RGBA')
+
+                mascara = Image.new('L', (ancho_tri, alto_tri), 0)
+                draw    = ImageDraw.Draw(mascara)
+                pts_relativos = []
+                for j in range(0, len(pts), 2):
+                    pts_relativos.append((pts[j] - x_min, pts[j+1] - y_min))
+                draw.polygon(pts_relativos, fill=255)
+                img.putalpha(mascara)
+
+                # Guardar tambien la imagen PIL (no solo el PhotoImage) para poder escalarla en el zoom
+                imgs_cache[i] = (img, ImageTk.PhotoImage(img), x_min, y_min, ancho_tri, alto_tri)
+
+        # Dibujar usando la cache
+        # Primero dibujar todo lo visual
+        for i, faccion in enumerate(ORDEN_CAPAS):
             oscuro = (faccion == faccion_atacante)
             color  = COLORES[faccion]['oscuro' if oscuro else 'normal']
-
-            # Triangulos
             pts    = puntos_con_zoom(faccion, w, h, zoom[faccion])
-            canvas.create_polygon(pts, fill=color, outline='black', width=3, tags=faccion)
 
-        # Crea el rectangulo provisional y el texto
+            if imgs_cache[i] is not None:
+                img_pil, img_tk_base, x_min_base, y_min_base, ancho_base, alto_base = imgs_cache[i]
+
+                z = zoom[faccion]
+                if z > ZOOM_MIN + 0.001:
+                    nuevo_ancho = int(ancho_base * z)
+                    nuevo_alto  = int(alto_base  * z)
+                    offset_x = (nuevo_ancho - ancho_base) // 2
+                    offset_y = (nuevo_alto  - alto_base)  // 2
+                    img_zoom   = img_pil.resize((nuevo_ancho, nuevo_alto), Image.NEAREST)
+                    imgs_tk[i] = ImageTk.PhotoImage(img_zoom)
+                    canvas.create_image(x_min_base - offset_x + OFFSET_IMGS[i][0],
+                                        y_min_base - offset_y + OFFSET_IMGS[i][1],
+                                        image=imgs_tk[i], anchor='nw')
+                else:
+                    canvas.create_image(x_min_base + OFFSET_IMGS[i][0],
+                                        y_min_base + OFFSET_IMGS[i][1],
+                                        image=img_tk_base, anchor='nw')
+
+                canvas.create_polygon(pts, fill='', outline='black', width=3, tags=faccion)
+            else:
+                canvas.create_polygon(pts, fill=color, outline='black', width=3, tags=faccion)
+
+        # Tags invisibles al final en orden inverso para que jardin_zombie reciba clicks
+        pts_jz = puntos_con_zoom('jardin_zombie', w, h, zoom['jardin_zombie'])
+        pts_me = puntos_con_zoom('medieval',      w, h, zoom['medieval'])
+        pts_ro = puntos_con_zoom('robotico',      w, h, zoom['robotico'])
+        canvas.create_polygon(pts_ro, fill='', outline='', tags='robotico')
+        canvas.create_polygon(pts_me, fill='', outline='', tags='medieval')
+        canvas.create_polygon(pts_jz, fill='', outline='', tags='jardin_zombie')
+
+        # Header siempre al final
         canvas.create_rectangle(w//2-150, 5, w//2+150, 40, fill='white', outline='black', tags='header')
         canvas.create_text(w//2, 22, text=f'Elige tu facción:  {turno}',
                         fill='red' if turno == 'atacante' else 'blue', font=('Arial', 13), tags='header')
@@ -341,9 +448,12 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
 
     confirmando = [False]  # lista para poder modificarla desde funciones internas
 
-    # Animando los triangulos y el popup
+    # FPS del loop de animacion — bajar si va lento, subir si va rapido
+    FPS = 150
+    MS_POR_FRAME = 1000 // FPS  # milisegundos entre cada frame
+
     def animar():
-        if not confirmando[0]:  # ← solo anima si no hay popup
+        if not confirmando[0]:
             necesita_redibujar = False
             w = canvas.winfo_width()
             h = canvas.winfo_height()
@@ -354,7 +464,7 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
                     necesita_redibujar = True
             if necesita_redibujar:
                 dibujar(w, h)
-        canvas.after(16, animar)
+        canvas.after(MS_POR_FRAME, animar)  # ← usa la variable en vez de 16
 
     # Mostrar la confirmacion tras dar click en la faccion
     def mostrar_confirmacion(faccion):
@@ -415,7 +525,7 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
 
     # Comienza
     animar()
-
+    
 # botones del menu
 tk.Button(menu, text='Jugar', command=abrir_loggeo).pack(pady=100)
 tk.Button(menu, text='Ir a configuracion', command=abrir_configuracion).pack(pady=20)
