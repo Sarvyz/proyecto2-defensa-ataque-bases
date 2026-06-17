@@ -4,6 +4,36 @@
  # Evan Umaña Sojo  (Carné: 2026009696)        |   # Profesores: Jeff Schmidt Peralta, Diego Andres Mora Rojas      
 # ============================================================================================================ #
 
+# Esta parte fue hecha con inteligencia artificial, ya que no es importante para el proyecto,
+# perfectamente se le pudo haber dicho al usuario que descargara las librerias y ya,
+# pero le hacemos el trabajo mas facil
+
+import subprocess
+import sys
+import importlib
+import importlib.util
+
+LIBRERIAS = {
+    'PIL':    'pillow',
+    'pygame': 'pygame',
+}
+
+def verificar_librerias():
+    faltantes = []
+    for modulo, paquete in LIBRERIAS.items():
+        if importlib.util.find_spec(modulo) is None:
+            faltantes.append(paquete)
+    
+    if faltantes:
+        print(f'Faltan librerías: {", ".join(faltantes)}. Instalando...')
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', *faltantes])
+        print('Listo. Reiniciá el programa.')
+        sys.exit()
+
+verificar_librerias()
+
+# -----------------------------------------------------------------------------------
+
 # Librerias usadas e importacion de otros py:
 
 import tkinter as tk
@@ -144,9 +174,11 @@ def abrir_register():
 # Solo sirve por ahora para hacer print para los diferentes casos
 def datawatcher(user, password):
 
+    global user1
+
     # Si se encuentra al usuario (es una prueba de codigo, aun falta iniciar sesion con el otro usuario)
-    if buscar_usuario(user, password) == True:
-        print(f'Bienvenido de vuelta, {user}.')
+    if buscar_usuario(user, password):
+        print(f'Bienvenido de vuelta, {user1[0]}.')
 
         def atacante_eligio(faccion):
             print(f'Atacante eligió: {faccion}')
@@ -197,6 +229,8 @@ def guardar_usuario_contraseña(user, password):
 # BUSCAR USUARIO
 # no creo que tenga que explicar que hace verdad
 def buscar_usuario(user, password):
+    
+    global user1
     try:
         #abre el archivo json para leer
         with open('data/USER_INFO.json', 'r') as f:
@@ -211,6 +245,7 @@ def buscar_usuario(user, password):
     for cuenta in datos:
         # si el usuario y la contraseña coinciden con lo dado
         if cuenta[0] == user and cuenta[1] == password:
+            user1 = cuenta
             return True
         
         # si solo el usuario coincide
@@ -256,7 +291,7 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
     # Valores positivos mueven la imagen hacia abajo/derecha, negativos hacia arriba/izquierda
     OFFSET_IMGS = [
         [0,   0],   # jardin_zombie
-        [-200, 0],   # medieval      ← cambia el primer valor para mover horizontalmente
+        [-5,   0],   # medieval      ← cambia el primer valor para mover horizontalmente
         [0,   0],   # robotico
     ]
 
@@ -369,18 +404,25 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
                 ancho_tri = x_max - x_min
                 alto_tri  = y_max - y_min
 
-                img = img_raw.copy().resize((ancho_tri, alto_tri), Image.LANCZOS).convert('RGBA')
+                # Agrandar lienzo para dar margen al offset sin cortar la imagen
+                ox, oy = OFFSET_IMGS[i][0], OFFSET_IMGS[i][1]
 
+                img_resized = img_raw.copy().resize((ancho_tri, alto_tri), Image.LANCZOS).convert('RGBA')
+
+                # Crear lienzo del mismo tamaño y pegar la imagen desplazada por el offset
+                lienzo = Image.new('RGBA', (ancho_tri, alto_tri), (0, 0, 0, 0))
+                lienzo.paste(img_resized, (ox, oy))
+
+                # Aplicar la máscara triangular sobre el lienzo desplazado
                 mascara = Image.new('L', (ancho_tri, alto_tri), 0)
                 draw    = ImageDraw.Draw(mascara)
                 pts_relativos = []
                 for j in range(0, len(pts), 2):
                     pts_relativos.append((pts[j] - x_min, pts[j+1] - y_min))
                 draw.polygon(pts_relativos, fill=255)
-                img.putalpha(mascara)
+                lienzo.putalpha(mascara)
 
-                # Guardar tambien la imagen PIL (no solo el PhotoImage) para poder escalarla en el zoom
-                imgs_cache[i] = (img, ImageTk.PhotoImage(img), x_min, y_min, ancho_tri, alto_tri)
+                imgs_cache[i] = (lienzo, ImageTk.PhotoImage(lienzo), x_min, y_min, ancho_tri, alto_tri)
 
         # Dibujar usando la cache
         # Primero dibujar todo lo visual
@@ -400,12 +442,12 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
                     offset_y = (nuevo_alto  - alto_base)  // 2
                     img_zoom   = img_pil.resize((nuevo_ancho, nuevo_alto), Image.NEAREST)
                     imgs_tk[i] = ImageTk.PhotoImage(img_zoom)
-                    canvas.create_image(x_min_base - offset_x + OFFSET_IMGS[i][0],
-                                        y_min_base - offset_y + OFFSET_IMGS[i][1],
+                    canvas.create_image(x_min_base - offset_x,
+                                        y_min_base - offset_y,
                                         image=imgs_tk[i], anchor='nw')
                 else:
-                    canvas.create_image(x_min_base + OFFSET_IMGS[i][0],
-                                        y_min_base + OFFSET_IMGS[i][1],
+                    canvas.create_image(x_min_base,
+                                        y_min_base,
                                         image=img_tk_base, anchor='nw')
 
                 canvas.create_polygon(pts, fill='', outline='black', width=3, tags=faccion)
@@ -421,9 +463,18 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
         canvas.create_polygon(pts_jz, fill='', outline='', tags='jardin_zombie')
 
         # Header siempre al final
-        canvas.create_rectangle(w//2-150, 5, w//2+150, 40, fill='white', outline='black', tags='header')
-        canvas.create_text(w//2, 22, text=f'Elige tu facción:  {turno}',
-                        fill='red' if turno == 'atacante' else 'blue', font=('Arial', 13), tags='header')
+        try:
+            ruta_header = 'assets/img/header_atacante.png' if turno == 'atacante' else 'assets/img/header_defensor.png'
+            img_header_pil = Image.open(ruta_header).convert('RGBA')
+            img_header_pil = img_header_pil.resize((250, 250), Image.LANCZOS)  # ← asignar
+            # Redimensionar
+            canvas._img_header = ImageTk.PhotoImage(img_header_pil)
+            canvas.create_image(w//2, -30, image=canvas._img_header, anchor='n', tags='header')
+        except:
+            # Fallback al header de texto si no carga la imagen
+            canvas.create_rectangle(w//2-150, 5, w//2+150, 40, fill='white', outline='black', tags='header')
+            canvas.create_text(w//2, 22, text=f'Elige tu facción:  {turno}',
+                            fill='red' if turno == 'atacante' else 'blue', font=('Arial', 13), tags='header')
 
     # Para cuando entre el mouse al triangulo de una faccion
     def on_enter(faccion):
