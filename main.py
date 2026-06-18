@@ -71,6 +71,14 @@ config.inicializar(root, menu)
 def abrir_configuracion():
     config.abrir()
 
+# Cargar las fuentes usadas con una ruta dada
+def cargar_fuente(ruta):
+    FR_PRIVATE = 0x10
+    ctypes.windll.gdi32.AddFontResourceExW(ruta, FR_PRIVATE, 0)
+
+cargar_fuente("assets/fonts/PressStart2P-Regular.ttf")
+cargar_fuente("assets/fonts/Minecraft.ttf")
+
 # -----------------------------------------------------------------------------------
 
 # Abre directamente el loggeo, si alguien no tiene usuario se lo crea dandole registrese aqui
@@ -407,7 +415,7 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
                 # Agrandar lienzo para dar margen al offset sin cortar la imagen
                 ox, oy = OFFSET_IMGS[i][0], OFFSET_IMGS[i][1]
 
-                img_resized = img_raw.copy().resize((ancho_tri, alto_tri), Image.LANCZOS).convert('RGBA')
+                img_resized = img_raw.copy().resize((ancho_tri, alto_tri), Image.NEAREST).convert('RGBA')
 
                 # Crear lienzo del mismo tamaño y pegar la imagen desplazada por el offset
                 lienzo = Image.new('RGBA', (ancho_tri, alto_tri), (0, 0, 0, 0))
@@ -466,7 +474,7 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
         try:
             ruta_header = 'assets/img/header_atacante.png' if turno == 'atacante' else 'assets/img/header_defensor.png'
             img_header_pil = Image.open(ruta_header).convert('RGBA')
-            img_header_pil = img_header_pil.resize((250, 250), Image.LANCZOS)  # ← asignar
+            img_header_pil = img_header_pil.resize((250, 250), Image.NEAREST)  # ← asignar
             # Redimensionar
             canvas._img_header = ImageTk.PhotoImage(img_header_pil)
             canvas.create_image(w//2, -30, image=canvas._img_header, anchor='n', tags='header')
@@ -577,12 +585,256 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
     # Comienza
     animar()
     
-# botones del menu
-tk.Button(menu, text='Jugar', command=abrir_loggeo).pack(pady=100)
-tk.Button(menu, text='Ir a configuracion', command=abrir_configuracion).pack(pady=20)
+# -----------------------------------------------------------------------------------
+# MENU PRINCIPAL CON CANVAS
+# -----------------------------------------------------------------------------------
+
+def construir_menu():
+    for widget in menu.winfo_children():
+        widget.destroy()
+
+    canvas_menu = tk.Canvas(menu, bg='black', highlightthickness=0)
+    canvas_menu.pack(fill='both', expand=True)
+
+    # Ruta de la imagen base del botón (la misma para los 4)
+    RUTA_BOTON = 'assets/img/boton.png'  # ← cambiá esto por tu ruta real
+
+    def popup_jugar():
+        j1 = globals().get('user1')
+        j2 = globals().get('user2')
+        ambos_logueados = j1 is not None and j2 is not None
+
+        overlay = tk.Frame(menu, bg='black')
+        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        overlay.configure(cursor='arrow')
+
+        POPUP_W = 420
+        POPUP_H = 220 if not ambos_logueados else 260
+
+        popup = tk.Frame(overlay, bg='#1a1a1a', bd=0)
+        popup.place(relx=0.5, rely=0.5, anchor='center', width=POPUP_W, height=POPUP_H)
+
+        popup_canvas = tk.Canvas(popup, width=POPUP_W, height=POPUP_H,
+                                  bg='#1a1a1a', highlightthickness=2,
+                                  highlightbackground='#555555')
+        popup_canvas.pack(fill='both', expand=True)
+
+        # Imagen de fondo del popup
+        try:
+            img_popup_fondo = Image.open('assets/img/popup_fondo.png').convert('RGBA')
+            img_popup_fondo = img_popup_fondo.resize((POPUP_W, POPUP_H), Image.NEAREST)
+            popup_canvas._fondo = ImageTk.PhotoImage(img_popup_fondo)
+            popup_canvas.create_image(0, 0, image=popup_canvas._fondo, anchor='nw')
+        except:
+            pass  # sin imagen usa el bg='#1a1a1a' del canvas
+
+        def cerrar_popup():
+            overlay.destroy()
+
+        if not ambos_logueados:
+            popup_canvas.create_text(
+                POPUP_W // 2, 70,
+                text='Por favor, inicien sesión\nantes de jugar\n(en el botón Cuenta)',
+                font=('Minecraft', 13),
+                fill='white',
+                justify='center'
+            )
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 155, 'OK', cerrar_popup)
+
+        else:
+            nombre_j1 = j1[0]
+            nombre_j2 = j2[0]
+
+            popup_canvas.create_text(
+                POPUP_W // 2, 50,
+                text='¿Quién será el atacante?',
+                font=('Minecraft', 14),
+                fill='white',
+                justify='center'
+            )
+
+            def elegir_atacante(atacante, defensor_data):
+                overlay.destroy()
+                def atacante_eligio(faccion):
+                    abrir_escoger_facciones(faccion_atacante=faccion, turno='defensor',
+                                            callback=lambda f: print(f'Defensor eligió {f}'))
+                abrir_escoger_facciones(turno='atacante', callback=atacante_eligio)
+
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 130,
+                                  f'Jugador 1  ({nombre_j1})',
+                                  lambda: elegir_atacante(j1, j2))
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 195,
+                                  f'Jugador 2  ({nombre_j2})',
+                                  lambda: elegir_atacante(j2, j1))
+
+    def _dibujar_boton_popup(cv, cx, cy, texto, comando):
+        BTN_W = 300
+        BTN_H = 45
+        tag   = f'pbtn_{texto[:6]}'
+
+        x0 = cx - BTN_W // 2
+        y0 = cy - BTN_H // 2
+
+        try:
+            img_b = Image.open('assets/img/boton.png').convert('RGBA')
+            img_b = img_b.resize((BTN_W, BTN_H), Image.NEAREST)
+            cv._refs = getattr(cv, '_refs', {})
+            cv._refs[tag] = ImageTk.PhotoImage(img_b)
+            cv.create_image(x0, y0, image=cv._refs[tag], anchor='nw', tags=tag)
+        except:
+            cv.create_rectangle(x0, y0, x0+BTN_W, y0+BTN_H,
+                                 fill='#333333', outline='#888888', width=2, tags=tag)
+
+        cv.create_text(cx+2, cy+2, text=texto, font=('Minecraft', 12), fill='#111111', tags=tag)
+        cv.create_text(cx,   cy,   text=texto, font=('Minecraft', 12), fill='white',   tags=tag)
+
+        cv.tag_bind(tag, '<Enter>',
+                    lambda e: cv.itemconfig(tag, fill='#555555') if cv.type(tag) == 'rectangle' else None)
+        cv.tag_bind(tag, '<Leave>',
+                    lambda e: cv.itemconfig(tag, fill='#333333') if cv.type(tag) == 'rectangle' else None)
+        cv.tag_bind(tag, '<Button-1>', lambda e: comando())
+
+    BOTONES = [
+        ('Jugar',    popup_jugar),   # ← esto
+        ('Ajustes',  abrir_configuracion),
+        ('Cuenta',   lambda: print('Cuenta')),
+        ('Salir',    root.destroy),
+    ]
+
+    # Parametros visuales modificables
+    BOTON_W      = 320   # ancho del botón en px
+    BOTON_H      = 100   # alto del botón en px
+    GAP_X        = 40    # separacion horizontal entre botones
+    GAP_Y        = 30    # separacion vertical entre botones
+    FONT_BOTON   = ('Minecraft', 22)
+    COLOR_TEXTO  = 'white'
+    COLOR_SOMBRA = '#222222'
+    BRILLO_HOVER = 1.35  # factor de brillo al hacer hover (1.0 = sin cambio)
+    ZOOM_HOVER   = 1.06  # factor de zoom al hacer hover
+
+    # Estado de animacion por boton
+    estado = {i: {'brillo': 1.0, 'zoom': 1.0, 'target_b': 1.0, 'target_z': 1.0} for i in range(4)}
+
+    img_base = None
+    try:
+        img_base = Image.open(RUTA_BOTON).convert('RGBA')
+    except:
+        pass  # si no carga, se dibuja un rectángulo de color
+
+    # Guarda referencias para que tkinter no las descarte
+    refs = {}
+
+    def dibujar_botones(w, h):
+        canvas_menu.delete('all')
+        
+        # IMAGEN DE FONDO — descomentá esto cuando la tengas lista:
+        # img_fondo = Image.open('assets/img/menu_fondo.png').convert('RGBA').resize((w, h), Image.NEAREST)
+        # canvas_menu._fondo = ImageTk.PhotoImage(img_fondo)
+        # canvas_menu.create_image(0, 0, image=canvas_menu._fondo, anchor='nw')
+        
+        # ... resto del código
+
+        # Centro total del grid
+        grid_w = BOTON_W * 2 + GAP_X
+        grid_h = BOTON_H * 2 + GAP_Y
+        ox = (w - grid_w) // 2
+        oy = (h - grid_h) // 2
+
+        for i, (texto, _) in enumerate(BOTONES):
+            col = i % 2
+            row = i // 2
+
+            # Centro del botón
+            cx = ox + col * (BOTON_W + GAP_X) + BOTON_W // 2
+            cy = oy + row * (BOTON_H + GAP_Y) + BOTON_H // 2
+
+            z = estado[i]['zoom']
+            b = estado[i]['brillo']
+            bw = int(BOTON_W * z)
+            bh = int(BOTON_H * z)
+            x0 = cx - bw // 2
+            y0 = cy - bh // 2
+
+            tag = f'btn_{i}'
+
+            if img_base:
+                img_resized = img_base.resize((bw, bh), Image.NEAREST)
+
+                # Aplicar brillo
+                if b != 1.0:
+                    enhancer = ImageEnhance.Brightness(img_resized)
+                    img_resized = enhancer.enhance(b)
+
+                img_tk = ImageTk.PhotoImage(img_resized)
+                refs[tag] = img_tk
+                canvas_menu.create_image(x0, y0, image=img_tk, anchor='nw', tags=tag)
+            else:
+                # Fallback si no hay imagen
+                canvas_menu.create_rectangle(x0, y0, x0+bw, y0+bh,
+                                              fill='#333333', outline='#666666',
+                                              width=2, tags=tag)
+
+            # Sombra del texto
+            canvas_menu.create_text(cx+2, cy+2, text=texto,
+                                     font=FONT_BOTON, fill=COLOR_SOMBRA, tags=tag)
+            # Texto principal
+            canvas_menu.create_text(cx, cy, text=texto,
+                                     font=FONT_BOTON, fill=COLOR_TEXTO, tags=tag)
+
+        # Bind eventos para cada botón
+        for i, (_, cmd) in enumerate(BOTONES):
+            tag = f'btn_{i}'
+            canvas_menu.tag_bind(tag, '<Enter>',    lambda e, idx=i: on_enter(idx))
+            canvas_menu.tag_bind(tag, '<Leave>',    lambda e, idx=i: on_leave(idx))
+            canvas_menu.tag_bind(tag, '<Button-1>', lambda e, idx=i: on_click(idx))
+
+    def on_enter(i):
+        estado[i]['target_b'] = BRILLO_HOVER
+        estado[i]['target_z'] = ZOOM_HOVER
+
+    def on_leave(i):
+        estado[i]['target_b'] = 1.0
+        estado[i]['target_z'] = 1.0
+
+    def on_click(i):
+        _, cmd = BOTONES[i]
+        cmd()
+
+    FPS = 60
+    MS  = 1000 // FPS
+
+    def animar():
+        if not canvas_menu.winfo_exists():
+            return
+        necesita = False
+        for i in range(4):
+            for key, tkey in [('brillo', 'target_b'), ('zoom', 'target_z')]:
+                diff = estado[i][tkey] - estado[i][key]
+                if abs(diff) > 0.001:
+                    estado[i][key] += diff * 0.18
+                    necesita = True
+                else:
+                    estado[i][key] = estado[i][tkey]
+        if necesita:
+            w = canvas_menu.winfo_width()
+            h = canvas_menu.winfo_height()
+            if w > 1 and h > 1:
+                dibujar_botones(w, h)
+        canvas_menu.after(MS, animar)
+
+    def on_resize(event):
+        dibujar_botones(event.width, event.height)
+
+    canvas_menu.bind('<Configure>', on_resize)
+    canvas_menu.update_idletasks()
+    animar()
+
+# -----------------------------------------------------------------------------------
+
+construir_menu()
 
 # pack al menu
 menu.pack(fill='both', expand=True)
 
-#comienza el mainloop
+# main loop
 root.mainloop()
