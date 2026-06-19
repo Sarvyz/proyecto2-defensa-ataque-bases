@@ -37,6 +37,7 @@ verificar_librerias()
 # Librerias usadas e importacion de otros py:
 
 import tkinter as tk
+import tkinter.font as tkfont
 from PIL import Image, ImageTk, ImageEnhance, ImageDraw
 import ctypes
 import pygame
@@ -45,6 +46,10 @@ import json
 from programs import config
 
 # -----------------------------------------------------------------------------------
+
+# Variables globales de sesión
+user1 = None
+user2 = None
 
 # Creando el root
 root = tk.Tk()
@@ -83,31 +88,62 @@ cargar_fuente("assets/fonts/Minecraft.ttf")
 
 # Abre directamente el loggeo, si alguien no tiene usuario se lo crea dandole registrese aqui
 
-def abrir_loggeo():
-    # Hace forget a cualquier cosa que pudiera estar previamente activa
+def abrir_loggeo(jugador=1):
+    global user1, user2, _user1_backup
+    if jugador == 2 and globals().get('user1') is not None:
+        _user1_backup = user1
+
+    cuenta_frame.pack_forget()
     menu.pack_forget()
     registereo.pack_forget()
-    # Hace pack a si mismo
-    loggeo.pack(fill='both', expand=True)
+    loggeo.pack_forget()
 
-    # Limpiar el frame por si ya tuvo widgets antes
     for widget in loggeo.winfo_children():
         widget.destroy()
 
-    # Labels, entradas y todo eso
-    # Para el usuario:
-    tk.Label(loggeo, text='Ingresa tu usuario:').pack(pady=20)
-    userInput = tk.Entry(loggeo, font=('Arial', 24), justify='center')
-    userInput.pack(pady=10)
+    loggeo.pack(fill='both', expand=True)
+    canvas = tk.Canvas(loggeo, bg='#0d0d0d', highlightthickness=0)
+    canvas.pack(fill='both', expand=True)
+
+    # Frame centrado sobre el canvas
+    frame = tk.Frame(canvas, bg='#1a1a1a')
+    frame.place(relx=0.5, rely=0.5, anchor='center', width=400, height=380)
+
+    try:
+        img_fondo = Image.open('assets/img/login_fondo.png').convert('RGBA')
+        img_fondo = img_fondo.resize((400, 380), Image.NEAREST)
+        frame._fondo = ImageTk.PhotoImage(img_fondo)
+        fondo_label = tk.Label(frame, image=frame._fondo, bg='#1a1a1a')
+        fondo_label.place(x=0, y=0, relwidth=1, relheight=1)
+    except:
+        pass
+
+    color_titulo = '#e05252' if jugador == 1 else '#5284e0'
+    nombre_jugador = f'Jugador {jugador}'
+
+    tk.Label(frame, text=nombre_jugador, font=('Minecraft', 18),
+             fg=color_titulo, bg='#1a1a1a').pack(pady=(30, 5))
+    tk.Label(frame, text='Iniciar Sesión', font=('Minecraft', 11),
+             fg='white', bg='#1a1a1a').pack(pady=(0, 20))
+
+    tk.Label(frame, text='Usuario', font=('Minecraft', 9),
+             fg='#aaaaaa', bg='#1a1a1a').pack()
+    userInput = tk.Entry(frame, font=('Arial', 14), justify='center',
+                          bg='#2a2a2a', fg='white', insertbackground='white',
+                          relief='flat', width=22)
+    userInput.pack(pady=(2, 12), ipady=6)
     userInput.focus()
 
-    # Para la contraseña:
-    tk.Label(loggeo, text='Ingrese su contraseña:').pack(pady=20)
+    tk.Label(frame, text='Contraseña', font=('Minecraft', 9),
+             fg='#aaaaaa', bg='#1a1a1a').pack()
 
-    passwordInput = tk.Entry(loggeo, show="*", font=('Arial', 24), justify='center', width=20)
-    passwordInput.pack(pady=10)
+    pass_frame = tk.Frame(frame, bg='#1a1a1a')
+    pass_frame.pack(pady=(2, 16))
+    passwordInput = tk.Entry(pass_frame, show='*', font=('Arial', 14), justify='center',
+                              bg='#2a2a2a', fg='white', insertbackground='white',
+                              relief='flat', width=20)
+    passwordInput.pack(side='left', ipady=6)
 
-    # Muestra o no la contraseña
     def toggle_password():
         if passwordInput.cget('show') == '*':
             passwordInput.config(show='')
@@ -116,46 +152,104 @@ def abrir_loggeo():
             passwordInput.config(show='*')
             ojito.config(text='👁')
 
-    # El ojito que cambia si se muestra o no la contraseña
-    ojito = tk.Button(loggeo, text='👁', font=('Arial', 18), command=toggle_password, bd=0)
-    ojito.place(relx=0.65, rely=0.45)
+    ojito = tk.Button(pass_frame, text='👁', font=('Arial', 11), command=toggle_password,
+                       bd=0, bg='#2a2a2a', fg='white', activebackground='#3a3a3a',
+                       activeforeground='white', cursor='hand2')
+    ojito.pack(side='left', padx=(2, 0), ipady=6)
 
-    # Boton para iniciar sesion (ahora mismo conectado a una funcion que simplemente hace prints)
-    tk.Button(loggeo, text='Iniciar sesión',
-              command=lambda: datawatcher(userInput.get(), passwordInput.get())).pack(pady=5)
-    
-    # Si no se tiene usuario se puede presionar aqui
-    tk.Button(loggeo, text='¿No tiene cuenta? ¡Registrese aquí!',
-              command=abrir_register).pack(pady=5)
+    msg_label = tk.Label(frame, text='', font=('Minecraft', 8), fg='#e05252', bg='#1a1a1a')
+    msg_label.pack()
 
-# -----------------------------------------------------------------------------------
+    def intentar_login():
+        user = userInput.get().strip()
+        pwd  = passwordInput.get()
+        resultado = buscar_usuario(user, pwd)
 
-# Si el jugador no tenia cuenta, acabará acá:
+        if resultado is True:
+            global user1, user2
+            encontrado = globals()['user1']  # buscar_usuario siempre setea user1
+            if jugador == 1:
+                user1 = encontrado
+            else:
+                user2 = encontrado
+                # restaurar user1 si había uno logueado antes
+                if '_user1_backup' in globals():
+                    user1 = globals()['_user1_backup']
+            abrir_cuenta()
 
-def abrir_register():
-    # Hace forget a cualquier cosa que pudiera estar previamente activa
+        elif resultado == 'contraincorrecta':
+            msg_label.config(text='Contraseña incorrecta.')
+        else:
+            msg_label.config(text='Usuario no encontrado.')
+
+    btn_frame = tk.Frame(frame, bg='#1a1a1a')
+    btn_frame.pack(pady=(4, 0))
+
+    tk.Button(btn_frame, text='Iniciar Sesión', font=('Minecraft', 9),
+              command=intentar_login, bg='#2a2a2a', fg='white',
+              activebackground='#3a3a3a', activeforeground='white',
+              relief='flat', cursor='hand2', padx=10, pady=6).pack(side='left', padx=6)
+
+    tk.Button(btn_frame, text='Volver', font=('Minecraft', 9),
+              command=abrir_cuenta, bg='#2a2a2a', fg='#aaaaaa',
+              activebackground='#3a3a3a', activeforeground='white',
+              relief='flat', cursor='hand2', padx=10, pady=6).pack(side='left', padx=6)
+
+    tk.Button(frame, text='¿No tenés cuenta? Registrate aquí',
+              font=('Minecraft', 7), command=lambda: abrir_register(jugador),
+              bg='#1a1a1a', fg='#888888', activebackground='#1a1a1a',
+              activeforeground='white', relief='flat', cursor='hand2').pack(pady=(8, 0))
+
+
+def abrir_register(jugador=1):
     menu.pack_forget()
     loggeo.pack_forget()
-    # Hace pack a si mismo
-    registereo.pack(fill='both', expand=True)
+    registereo.pack_forget()
 
-    # Limpiar el frame por si ya tuvo widgets antes
     for widget in registereo.winfo_children():
         widget.destroy()
 
-    # Labels y entradas de usuario
-    tk.Label(registereo, text='Ingrese un usuario:').pack(pady=20)
-    userInput = tk.Entry(registereo, font=('Arial', 24), justify='center')
-    userInput.pack(pady=10)
+    registereo.pack(fill='both', expand=True)
+    canvas = tk.Canvas(registereo, bg='#0d0d0d', highlightthickness=0)
+    canvas.pack(fill='both', expand=True)
+
+    frame = tk.Frame(canvas, bg='#1a1a1a')
+    frame.place(relx=0.5, rely=0.5, anchor='center', width=400, height=420)
+
+    try:
+        img_fondo = Image.open('assets/img/login_fondo.png').convert('RGBA')
+        img_fondo = img_fondo.resize((400, 420), Image.NEAREST)
+        frame._fondo = ImageTk.PhotoImage(img_fondo)
+        fondo_label = tk.Label(frame, image=frame._fondo, bg='#1a1a1a')
+        fondo_label.place(x=0, y=0, relwidth=1, relheight=1)
+    except:
+        pass
+
+    color_titulo = '#e05252' if jugador == 1 else '#5284e0'
+
+    tk.Label(frame, text=f'Jugador {jugador}', font=('Minecraft', 18),
+             fg=color_titulo, bg='#1a1a1a').pack(pady=(30, 5))
+    tk.Label(frame, text='Registrarse', font=('Minecraft', 11),
+             fg='white', bg='#1a1a1a').pack(pady=(0, 20))
+
+    tk.Label(frame, text='Usuario', font=('Minecraft', 9),
+             fg='#aaaaaa', bg='#1a1a1a').pack()
+    userInput = tk.Entry(frame, font=('Arial', 14), justify='center',
+                          bg='#2a2a2a', fg='white', insertbackground='white',
+                          relief='flat', width=22)
+    userInput.pack(pady=(2, 12), ipady=6)
     userInput.focus()
 
-    # Labels y entradas de contraseña
-    tk.Label(registereo, text='Ingrese una contraseña:').pack(pady=20)
+    tk.Label(frame, text='Contraseña', font=('Minecraft', 9),
+             fg='#aaaaaa', bg='#1a1a1a').pack()
 
-    passwordInput = tk.Entry(registereo, show="*", font=('Arial', 24), justify='center', width=20)
-    passwordInput.pack(pady=10)
+    pass_frame = tk.Frame(frame, bg='#1a1a1a')
+    pass_frame.pack(pady=(2, 16))
+    passwordInput = tk.Entry(pass_frame, show='*', font=('Arial', 14), justify='center',
+                              bg='#2a2a2a', fg='white', insertbackground='white',
+                              relief='flat', width=20)
+    passwordInput.pack(side='left', ipady=6)
 
-    # Funcion para mostrar o no la contra
     def toggle_password():
         if passwordInput.cget('show') == '*':
             passwordInput.config(show='')
@@ -164,17 +258,327 @@ def abrir_register():
             passwordInput.config(show='*')
             ojito.config(text='👁')
 
-    # El ojito que cambia si se muestra o no la contraseña
-    ojito = tk.Button(registereo, text='👁', font=('Arial', 18), command=toggle_password, bd=0)
-    ojito.place(relx=0.65, rely=0.45)
+    ojito = tk.Button(pass_frame, text='👁', font=('Arial', 11), command=toggle_password,
+                       bd=0, bg='#2a2a2a', fg='white', activebackground='#3a3a3a',
+                       activeforeground='white', cursor='hand2')
+    ojito.pack(side='left', padx=(2, 0), ipady=6)
 
-    # Para crear el usuario y contraseña y guardarlos
-    tk.Button(registereo, text='Registrarse',
-              command=lambda: guardar_usuario_contraseña(userInput.get(), passwordInput.get())).pack(pady=5)
-    
-    # En caso de que ya se tenga cuenta
-    tk.Button(registereo, text='¿Ya tiene cuenta? ¡Inicie sesión aquí!',
-              command=abrir_loggeo).pack(pady=5)
+    msg_label = tk.Label(frame, text='', font=('Minecraft', 8), fg='#e05252', bg='#1a1a1a')
+    msg_label.pack()
+
+    def intentar_register():
+        user = userInput.get().strip()
+        pwd  = passwordInput.get()
+        if not user or not pwd:
+            msg_label.config(text='Completá ambos campos.')
+            return
+        guardar_usuario_contraseña(user, pwd)
+        msg_label.config(fg='#52e07a', text=f'¡Cuenta creada! Iniciá sesión.')
+        frame.after(1200, lambda: abrir_loggeo(jugador))
+
+    btn_frame = tk.Frame(frame, bg='#1a1a1a')
+    btn_frame.pack(pady=(4, 0))
+
+    tk.Button(btn_frame, text='Registrarse', font=('Minecraft', 9),
+              command=intentar_register, bg='#2a2a2a', fg='white',
+              activebackground='#3a3a3a', activeforeground='white',
+              relief='flat', cursor='hand2', padx=10, pady=6).pack(side='left', padx=6)
+
+    tk.Button(btn_frame, text='Volver', font=('Minecraft', 9),
+              command=abrir_cuenta, bg='#2a2a2a', fg='#aaaaaa',
+              activebackground='#3a3a3a', activeforeground='white',
+              relief='flat', cursor='hand2', padx=10, pady=6).pack(side='left', padx=6)
+
+    tk.Button(frame, text='¿Ya tenés cuenta? Iniciá sesión aquí',
+              font=('Minecraft', 7), command=lambda: abrir_loggeo(jugador),
+              bg='#1a1a1a', fg='#888888', activebackground='#1a1a1a',
+              activeforeground='white', relief='flat', cursor='hand2').pack(pady=(8, 0))
+
+# PARTE DEL CANVAS CUENTA
+
+cuenta_frame = tk.Frame(root, bg='#0d0d0d')
+
+def abrir_cuenta():
+    menu.pack_forget()
+    loggeo.pack_forget()
+    registereo.pack_forget()
+    cuenta_frame.pack_forget()
+
+    for widget in cuenta_frame.winfo_children():
+        widget.destroy()
+
+    cuenta_frame.pack(fill='both', expand=True)
+
+    canvas = tk.Canvas(cuenta_frame, bg='#0d0d0d', highlightthickness=0)
+    canvas.pack(fill='both', expand=True)
+
+    # Fondo general
+    try:
+        img_bg = Image.open('assets/img/cuenta_fondo.png').convert('RGBA')
+        canvas._bg = img_bg
+    except:
+        canvas._bg = None
+
+    def dibujar_fondo(w, h):
+        if canvas._bg:
+            img = canvas._bg.resize((w, h), Image.NEAREST)
+            canvas._bg_tk = ImageTk.PhotoImage(img)
+            canvas.create_image(0, 0, image=canvas._bg_tk, anchor='nw', tags='fondo')
+
+    # ------------------------------------------------------------------
+    # Tarjeta individual
+    # ------------------------------------------------------------------
+    def crear_tarjeta(parent, jugador):
+        global user1, user2
+        datos = user1 if jugador == 1 else globals().get('user2')
+
+        color_borde  = '#c0392b' if jugador == 1 else '#2980b9'
+        color_titulo = '#e74c3c' if jugador == 1 else '#3498db'
+        label_jugador = f'JUGADOR {jugador}'
+
+        tarjeta = tk.Frame(parent, bg='#111111', bd=3, relief='ridge',
+                            highlightbackground=color_borde, highlightthickness=3)
+        tarjeta.pack(side='left', fill='both', expand=True, padx=30, pady=40)
+
+        try:
+            img_card = Image.open(f'assets/img/tarjeta_j{jugador}.png').convert('RGBA')
+            tarjeta._img_card = img_card
+        except:
+            tarjeta._img_card = None
+
+        # Canvas interno de la tarjeta para imagen de fondo
+        card_canvas = tk.Canvas(tarjeta, bg='#111111', highlightthickness=0)
+        card_canvas.pack(fill='both', expand=True)
+
+        inner = tk.Frame(card_canvas, bg='#111111')
+        card_canvas.create_window(0, 0, anchor='nw', window=inner, tags='inner')
+
+        def resize_inner(event):
+            card_canvas.itemconfig('inner', width=event.width, height=event.height)
+            if tarjeta._img_card:
+                img = tarjeta._img_card.resize((event.width, event.height), Image.NEAREST)
+                card_canvas._bg_tk = ImageTk.PhotoImage(img)
+                card_canvas.create_image(0, 0, image=card_canvas._bg_tk, anchor='nw', tags='bg_card')
+                card_canvas.tag_lower('bg_card')
+                card_canvas.tag_raise('inner')
+        card_canvas.bind('<Configure>', resize_inner)
+
+        # Título de la tarjeta
+        tk.Label(inner, text=label_jugador, font=('Minecraft', 16),
+                 fg=color_titulo, bg='#111111').pack(pady=(20, 4))
+
+        if datos is None:
+            # ---- NO logueado ----
+            tk.Label(inner, text='Sin sesión iniciada', font=('Minecraft', 9),
+                     fg='#666666', bg='#111111').pack(pady=(20, 30))
+
+            tk.Button(inner, text='Iniciar Sesión', font=('Minecraft', 10),
+                      command=lambda j=jugador: abrir_loggeo(j),
+                      bg='#1e1e1e', fg='white', activebackground='#2a2a2a',
+                      relief='flat', cursor='hand2', padx=12, pady=8).pack(pady=6)
+
+            tk.Button(inner, text='Registrarse', font=('Minecraft', 10),
+                      command=lambda j=jugador: abrir_register(j),
+                      bg='#1e1e1e', fg='#aaaaaa', activebackground='#2a2a2a',
+                      relief='flat', cursor='hand2', padx=12, pady=8).pack(pady=4)
+
+        else:
+            # ---- SÍ logueado ----
+            nombre    = datos[0]
+            victorias_ataque   = datos[2] if len(datos) > 2 else 0
+            victorias_defensa  = datos[3] if len(datos) > 3 else 0
+
+            tk.Label(inner, text=nombre, font=('Minecraft', 14),
+                     fg='white', bg='#111111').pack(pady=(10, 16))
+
+            # Estadísticas
+            stats_frame = tk.Frame(inner, bg='#1a1a1a', padx=16, pady=12)
+            stats_frame.pack(padx=20, fill='x')
+
+            tk.Label(stats_frame, text='Victorias como atacante',
+                     font=('Minecraft', 8), fg='#aaaaaa', bg='#1a1a1a').grid(row=0, column=0, sticky='w', pady=3)
+            tk.Label(stats_frame, text=str(victorias_ataque),
+                     font=('Minecraft', 8), fg=color_titulo, bg='#1a1a1a').grid(row=0, column=1, sticky='e', pady=3)
+
+            tk.Label(stats_frame, text='Victorias como defensor',
+                     font=('Minecraft', 8), fg='#aaaaaa', bg='#1a1a1a').grid(row=1, column=0, sticky='w', pady=3)
+            tk.Label(stats_frame, text=str(victorias_defensa),
+                     font=('Minecraft', 8), fg=color_titulo, bg='#1a1a1a').grid(row=1, column=1, sticky='e', pady=3)
+
+            stats_frame.columnconfigure(0, weight=1)
+            stats_frame.columnconfigure(1, weight=0)
+
+            # Botones de cuenta
+            acciones_frame = tk.Frame(inner, bg='#111111')
+            acciones_frame.pack(pady=16)
+
+            tk.Button(acciones_frame, text='Ajustes de cuenta', font=('Minecraft', 8),
+                      command=lambda j=jugador, d=datos: abrir_ajustes_cuenta(j, d),
+                      bg='#1e1e1e', fg='white', activebackground='#2a2a2a',
+                      relief='flat', cursor='hand2', padx=10, pady=6).pack(pady=4)
+
+            def cerrar_sesion(j):
+                global user1, user2
+                if j == 1:
+                    user1 = None
+                else:
+                    user2 = None
+                abrir_cuenta()
+
+            tk.Button(acciones_frame, text='Cerrar Sesión', font=('Minecraft', 8),
+                      command=lambda j=jugador: cerrar_sesion(j),
+                      bg='#1e1e1e', fg='#e05252', activebackground='#2a2a2a',
+                      relief='flat', cursor='hand2', padx=10, pady=6).pack(pady=4)
+
+    # ------------------------------------------------------------------
+    # Armar la pantalla
+    # ------------------------------------------------------------------
+    tarjetas_frame = tk.Frame(canvas, bg='#0d0d0d')
+    canvas.create_window(0, 0, anchor='nw', window=tarjetas_frame, tags='tarjetas')
+
+    def resize_tarjetas(event):
+        canvas.itemconfig('tarjetas', width=event.width, height=event.height - 60)
+        dibujar_fondo(event.width, event.height)
+
+    canvas.bind('<Configure>', resize_tarjetas)
+
+    crear_tarjeta(tarjetas_frame, 1)
+    crear_tarjeta(tarjetas_frame, 2)
+
+    # Botón volver al menú
+    tk.Button(cuenta_frame, text='← Volver al menú', font=('Minecraft', 9),
+              command=lambda: [cuenta_frame.pack_forget(), construir_menu(), menu.pack(fill='both', expand=True)],
+              bg='#0d0d0d', fg='#888888', activebackground='#0d0d0d',
+              activeforeground='white', relief='flat', cursor='hand2',
+              padx=12, pady=8).pack(side='bottom', pady=10)
+
+# -----------------------------------------------------------------------------------
+# AJUSTES DE CUENTA
+# -----------------------------------------------------------------------------------
+
+def abrir_ajustes_cuenta(jugador, datos):
+    cuenta_frame.pack_forget()
+
+    ajustes_frame = tk.Frame(root, bg='#0d0d0d')
+    ajustes_frame.pack(fill='both', expand=True)
+
+    canvas = tk.Canvas(ajustes_frame, bg='#0d0d0d', highlightthickness=0)
+    canvas.pack(fill='both', expand=True)
+
+    color_titulo = '#e74c3c' if jugador == 1 else '#3498db'
+
+    frame = tk.Frame(canvas, bg='#1a1a1a')
+    frame.place(relx=0.5, rely=0.5, anchor='center', width=420, height=460)
+
+    try:
+        img_fondo = Image.open('assets/img/login_fondo.png').convert('RGBA')
+        img_fondo = img_fondo.resize((420, 460), Image.NEAREST)
+        frame._fondo = ImageTk.PhotoImage(img_fondo)
+        tk.Label(frame, image=frame._fondo, bg='#1a1a1a').place(x=0, y=0, relwidth=1, relheight=1)
+    except:
+        pass
+
+    tk.Label(frame, text=f'Jugador {jugador} — Ajustes',
+             font=('Minecraft', 13), fg=color_titulo, bg='#1a1a1a').pack(pady=(24, 20))
+
+    msg_label = tk.Label(frame, text='', font=('Minecraft', 8), fg='#52e07a', bg='#1a1a1a')
+    msg_label.pack()
+
+    # Campo contraseña actual (requerido para todo)
+    tk.Label(frame, text='Contraseña actual', font=('Minecraft', 8),
+             fg='#aaaaaa', bg='#1a1a1a').pack()
+    pwd_actual = tk.Entry(frame, show='*', font=('Arial', 13), justify='center',
+                           bg='#2a2a2a', fg='white', insertbackground='white',
+                           relief='flat', width=22)
+    pwd_actual.pack(pady=(2, 14), ipady=5)
+
+    # Campo nuevo valor (usuario o contraseña nueva)
+    tk.Label(frame, text='Nuevo valor (usuario o contraseña)', font=('Minecraft', 8),
+             fg='#aaaaaa', bg='#1a1a1a').pack()
+    nuevo_valor = tk.Entry(frame, font=('Arial', 13), justify='center',
+                            bg='#2a2a2a', fg='white', insertbackground='white',
+                            relief='flat', width=22)
+    nuevo_valor.pack(pady=(2, 18), ipady=5)
+
+    def verificar_pwd():
+        return pwd_actual.get() == datos[1]
+
+    def leer_json():
+        try:
+            with open('data/USER_INFO.json', 'r') as f:
+                return json.load(f)
+        except:
+            return []
+
+    def escribir_json(d):
+        with open('data/USER_INFO.json', 'w') as f:
+            json.dump(d, f, indent=4)
+
+    def cambiar_usuario():
+        if not verificar_pwd():
+            msg_label.config(fg='#e05252', text='Contraseña incorrecta.')
+            return
+        nuevo = nuevo_valor.get().strip()
+        if not nuevo:
+            msg_label.config(fg='#e05252', text='Ingresá el nuevo usuario.')
+            return
+        d = leer_json()
+        for cuenta in d:
+            if cuenta[0] == datos[0]:
+                cuenta[0] = nuevo
+                break
+        escribir_json(d)
+        datos[0] = nuevo
+        msg_label.config(fg='#52e07a', text=f'Usuario cambiado a "{nuevo}".')
+
+    def cambiar_contraseña():
+        if not verificar_pwd():
+            msg_label.config(fg='#e05252', text='Contraseña incorrecta.')
+            return
+        nueva = nuevo_valor.get()
+        if not nueva:
+            msg_label.config(fg='#e05252', text='Ingresá la nueva contraseña.')
+            return
+        d = leer_json()
+        for cuenta in d:
+            if cuenta[0] == datos[0]:
+                cuenta[1] = nueva
+                break
+        escribir_json(d)
+        datos[1] = nueva
+        msg_label.config(fg='#52e07a', text='Contraseña actualizada.')
+
+    def borrar_cuenta():
+        if not verificar_pwd():
+            msg_label.config(fg='#e05252', text='Contraseña incorrecta.')
+            return
+        d = leer_json()
+        d = [c for c in d if c[0] != datos[0]]
+        escribir_json(d)
+        global user1, user2
+        if jugador == 1:
+            user1 = None
+        else:
+            user2 = None
+        ajustes_frame.destroy()
+        abrir_cuenta()
+
+    btns = [
+        ('Cambiar usuario',     cambiar_usuario),
+        ('Cambiar contraseña',  cambiar_contraseña),
+        ('Borrar cuenta',       borrar_cuenta),
+    ]
+    for texto, cmd in btns:
+        color_fg = '#e05252' if texto == 'Borrar cuenta' else 'white'
+        tk.Button(frame, text=texto, font=('Minecraft', 9),
+                  command=cmd, bg='#1e1e1e', fg=color_fg,
+                  activebackground='#2a2a2a', activeforeground='white',
+                  relief='flat', cursor='hand2', padx=12, pady=7).pack(pady=5)
+
+    tk.Button(frame, text='← Volver', font=('Minecraft', 9),
+              command=lambda: [ajustes_frame.destroy(), abrir_cuenta()],
+              bg='#1a1a1a', fg='#888888', activebackground='#1a1a1a',
+              activeforeground='white', relief='flat', cursor='hand2').pack(pady=(14, 0))
 
 # -----------------------------------------------------------------------------------
 
@@ -590,14 +994,17 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
 # -----------------------------------------------------------------------------------
 
 def construir_menu():
+
+    cuenta_frame.pack_forget()
+
     for widget in menu.winfo_children():
         widget.destroy()
 
     canvas_menu = tk.Canvas(menu, bg='black', highlightthickness=0)
     canvas_menu.pack(fill='both', expand=True)
 
-    # Ruta de la imagen base del botón (la misma para los 4)
-    RUTA_BOTON = 'assets/img/boton.png'  # ← cambiá esto por tu ruta real
+    # Ruta de la imagen base del botón (la misma para TODOS los botones)
+    RUTA_BOTON = 'assets/img/boton.png'
 
     def popup_jugar():
         j1 = globals().get('user1')
@@ -609,7 +1016,7 @@ def construir_menu():
         overlay.configure(cursor='arrow')
 
         POPUP_W = 420
-        POPUP_H = 220 if not ambos_logueados else 260
+        POPUP_H = 220 if not ambos_logueados else 300  # era 260 y no quedaba bien
 
         popup = tk.Frame(overlay, bg='#1a1a1a', bd=0)
         popup.place(relx=0.5, rely=0.5, anchor='center', width=POPUP_W, height=POPUP_H)
@@ -660,17 +1067,28 @@ def construir_menu():
                                             callback=lambda f: print(f'Defensor eligió {f}'))
                 abrir_escoger_facciones(turno='atacante', callback=atacante_eligio)
 
-            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 130,
-                                  f'Jugador 1  ({nombre_j1})',
-                                  lambda: elegir_atacante(j1, j2))
-            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 195,
-                                  f'Jugador 2  ({nombre_j2})',
-                                  lambda: elegir_atacante(j2, j1))
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 110,
+                              f'Jugador 1  ({nombre_j1})',
+                              lambda: elegir_atacante(j1, j2),
+                              tag_id='j1')
 
-    def _dibujar_boton_popup(cv, cx, cy, texto, comando):
-        BTN_W = 300
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 170,
+                                f'Jugador 2  ({nombre_j2})',
+                                lambda: elegir_atacante(j2, j1),
+                                tag_id='j2')
+
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 230,
+                                'Volver',
+                                cerrar_popup,
+                                tag_id='volver')
+
+    def _dibujar_boton_popup(cv, cx, cy, texto, comando, tag_id=None):
+        fuente = tkfont.Font(family='Minecraft', size=12)
+        texto_ancho = fuente.measure(texto)
+        PADDING_X = 30  # margen a cada lado
+        BTN_W = texto_ancho + PADDING_X * 2
         BTN_H = 45
-        tag   = f'pbtn_{texto[:6]}'
+        tag   = f'pbtn_{tag_id}' if tag_id is not None else f'pbtn_{id(comando)}'
 
         x0 = cx - BTN_W // 2
         y0 = cy - BTN_H // 2
@@ -697,7 +1115,7 @@ def construir_menu():
     BOTONES = [
         ('Jugar',    popup_jugar),   # ← esto
         ('Ajustes',  abrir_configuracion),
-        ('Cuenta',   lambda: print('Cuenta')),
+        ('Cuenta',   abrir_cuenta),
         ('Salir',    root.destroy),
     ]
 
