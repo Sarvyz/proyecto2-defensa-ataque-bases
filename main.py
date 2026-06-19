@@ -43,6 +43,9 @@ import ctypes
 import pygame
 import json
 
+from programs import game
+from programs import game_canvas
+
 from programs import config
 
 # -----------------------------------------------------------------------------------
@@ -582,36 +585,6 @@ def abrir_ajustes_cuenta(jugador, datos):
 
 # -----------------------------------------------------------------------------------
 
-# DATAWATCHER
-# Solo sirve por ahora para hacer print para los diferentes casos
-def datawatcher(user, password):
-
-    global user1
-
-    # Si se encuentra al usuario (es una prueba de codigo, aun falta iniciar sesion con el otro usuario)
-    if buscar_usuario(user, password):
-        print(f'Bienvenido de vuelta, {user1[0]}.')
-
-        def atacante_eligio(faccion):
-            print(f'Atacante eligió: {faccion}')
-            abrir_escoger_facciones(faccion_atacante=faccion, turno='defensor', callback=defensor_eligio)
-
-        def defensor_eligio(faccion):
-            print(f'Defensor eligió: {faccion}')
-            # aquí arrancás el juego
-
-        abrir_escoger_facciones(turno='atacante', callback=atacante_eligio)
-    
-    # Hay un usuario con ese nombre, pero no con esa contraseña
-    elif buscar_usuario(user, password) == 'contraincorrecta':
-        print('Contraseña incorrecta')
-
-    # No hubo ninguna coincidencia del usuario ingresado con los guardados
-    else:
-        print('El usuario no se encuentra registrado.')
-
-# -----------------------------------------------------------------------------------
-
 # GUARDAR EL USUARIO Y CONTRASEÑA
 # Es la funcion que sirve con el registreo, para guardar en el archivo json toda la info de contraseña y user
 def guardar_usuario_contraseña(user, password):
@@ -1003,90 +976,14 @@ def construir_menu():
     canvas_menu = tk.Canvas(menu, bg='black', highlightthickness=0)
     canvas_menu.pack(fill='both', expand=True)
 
-    # Ruta de la imagen base del botón (la misma para TODOS los botones)
     RUTA_BOTON = 'assets/img/boton.png'
 
-    def popup_jugar():
-        j1 = globals().get('user1')
-        j2 = globals().get('user2')
-        ambos_logueados = j1 is not None and j2 is not None
-
-        overlay = tk.Frame(menu, bg='black')
-        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-        overlay.configure(cursor='arrow')
-
-        POPUP_W = 420
-        POPUP_H = 220 if not ambos_logueados else 300  # era 260 y no quedaba bien
-
-        popup = tk.Frame(overlay, bg='#1a1a1a', bd=0)
-        popup.place(relx=0.5, rely=0.5, anchor='center', width=POPUP_W, height=POPUP_H)
-
-        popup_canvas = tk.Canvas(popup, width=POPUP_W, height=POPUP_H,
-                                  bg='#1a1a1a', highlightthickness=2,
-                                  highlightbackground='#555555')
-        popup_canvas.pack(fill='both', expand=True)
-
-        # Imagen de fondo del popup
-        try:
-            img_popup_fondo = Image.open('assets/img/popup_fondo.png').convert('RGBA')
-            img_popup_fondo = img_popup_fondo.resize((POPUP_W, POPUP_H), Image.NEAREST)
-            popup_canvas._fondo = ImageTk.PhotoImage(img_popup_fondo)
-            popup_canvas.create_image(0, 0, image=popup_canvas._fondo, anchor='nw')
-        except:
-            pass  # sin imagen usa el bg='#1a1a1a' del canvas
-
-        def cerrar_popup():
-            overlay.destroy()
-
-        if not ambos_logueados:
-            popup_canvas.create_text(
-                POPUP_W // 2, 70,
-                text='Por favor, inicien sesión\nantes de jugar\n(en el botón Cuenta)',
-                font=('Minecraft', 13),
-                fill='white',
-                justify='center'
-            )
-            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 155, 'OK', cerrar_popup)
-
-        else:
-            nombre_j1 = j1[0]
-            nombre_j2 = j2[0]
-
-            popup_canvas.create_text(
-                POPUP_W // 2, 50,
-                text='¿Quién será el atacante?',
-                font=('Minecraft', 14),
-                fill='white',
-                justify='center'
-            )
-
-            def elegir_atacante(atacante, defensor_data):
-                overlay.destroy()
-                def atacante_eligio(faccion):
-                    abrir_escoger_facciones(faccion_atacante=faccion, turno='defensor',
-                                            callback=lambda f: print(f'Defensor eligió {f}'))
-                abrir_escoger_facciones(turno='atacante', callback=atacante_eligio)
-
-            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 110,
-                              f'Jugador 1  ({nombre_j1})',
-                              lambda: elegir_atacante(j1, j2),
-                              tag_id='j1')
-
-            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 170,
-                                f'Jugador 2  ({nombre_j2})',
-                                lambda: elegir_atacante(j2, j1),
-                                tag_id='j2')
-
-            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 230,
-                                'Volver',
-                                cerrar_popup,
-                                tag_id='volver')
-
+    # ← PRIMERO esta función
     def _dibujar_boton_popup(cv, cx, cy, texto, comando, tag_id=None):
         fuente = tkfont.Font(family='Minecraft', size=12)
         texto_ancho = fuente.measure(texto)
-        PADDING_X = 30  # margen a cada lado
-        BTN_W = texto_ancho + PADDING_X * 2
+        PADDING_X = 30
+        BTN_W = max(texto_ancho + PADDING_X * 2, 120)
         BTN_H = 45
         tag   = f'pbtn_{tag_id}' if tag_id is not None else f'pbtn_{id(comando)}'
 
@@ -1111,6 +1008,105 @@ def construir_menu():
         cv.tag_bind(tag, '<Leave>',
                     lambda e: cv.itemconfig(tag, fill='#333333') if cv.type(tag) == 'rectangle' else None)
         cv.tag_bind(tag, '<Button-1>', lambda e: comando())
+
+    def popup_jugar():
+        j1 = globals().get('user1')
+        j2 = globals().get('user2')
+        ambos_logueados = j1 is not None and j2 is not None
+
+        overlay = tk.Frame(menu, bg='black')
+        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        overlay.configure(cursor='arrow')
+
+        POPUP_W = 420
+        POPUP_H = 220 if not ambos_logueados else 300
+
+        popup = tk.Frame(overlay, bg='#1a1a1a', bd=0)
+        popup.place(relx=0.5, rely=0.5, anchor='center', width=POPUP_W, height=POPUP_H)
+
+        popup_canvas = tk.Canvas(popup, width=POPUP_W, height=POPUP_H,
+                                  bg='#1a1a1a', highlightthickness=2,
+                                  highlightbackground='#555555')
+        popup_canvas.pack(fill='both', expand=True)
+
+        try:
+            img_popup_fondo = Image.open('assets/img/popup_fondo.png').convert('RGBA')
+            img_popup_fondo = img_popup_fondo.resize((POPUP_W, POPUP_H), Image.NEAREST)
+            popup_canvas._fondo = ImageTk.PhotoImage(img_popup_fondo)
+            popup_canvas.create_image(0, 0, image=popup_canvas._fondo, anchor='nw')
+        except:
+            pass
+
+        def cerrar_popup():
+            overlay.destroy()
+
+        def elegir_atacante(atacante_datos, defensor_datos):
+            overlay.destroy()
+
+            def atacante_eligio_faccion(faccion_atk):
+                def defensor_eligio_faccion(faccion_def):
+                    j_atacante = game.Jugador(
+                        nombre  = atacante_datos[0],
+                        rol     = 'atacante',
+                        faccion = faccion_atk,
+                        dinero  = game.DINERO_INICIAL_ATACANTE
+                    )
+                    j_defensor = game.Jugador(
+                        nombre  = defensor_datos[0],
+                        rol     = 'defensor',
+                        faccion = faccion_def,
+                        dinero  = game.DINERO_INICIAL_DEFENSOR
+                    )
+                    partida = game.Partida(j_atacante, j_defensor)
+                    game_canvas.abrir_juego(root, partida)
+
+                abrir_escoger_facciones(
+                    faccion_atacante = faccion_atk,
+                    turno    = 'defensor',
+                    callback = defensor_eligio_faccion
+                )
+
+            abrir_escoger_facciones(
+                turno    = 'atacante',
+                callback = atacante_eligio_faccion
+            )
+
+        if not ambos_logueados:
+            popup_canvas.create_text(
+                POPUP_W // 2, 70,
+                text='Por favor, inicien sesión\nantes de jugar\n(en el botón Cuenta)',
+                font=('Minecraft', 13),
+                fill='white',
+                justify='center'
+            )
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 155, 'OK', cerrar_popup, tag_id='ok')
+
+        else:
+            nombre_j1 = j1[0]
+            nombre_j2 = j2[0]
+
+            popup_canvas.create_text(
+                POPUP_W // 2, 50,
+                text='¿Quién será el atacante?',
+                font=('Minecraft', 14),
+                fill='white',
+                justify='center'
+            )
+
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 110,
+                                  f'Jugador 1  ({nombre_j1})',
+                                  lambda: elegir_atacante(j1, j2),
+                                  tag_id='j1')
+
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 170,
+                                  f'Jugador 2  ({nombre_j2})',
+                                  lambda: elegir_atacante(j2, j1),
+                                  tag_id='j2')
+
+            _dibujar_boton_popup(popup_canvas, POPUP_W // 2, 230,
+                                  'Volver',
+                                  cerrar_popup,
+                                  tag_id='volver')
 
     BOTONES = [
         ('Jugar',    popup_jugar),   # ← esto
