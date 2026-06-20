@@ -1,6 +1,6 @@
 # ============================================================================================================ #
  # Proyecto 2 Introduccion a la Programacion   |   # Grupo 1 CE (Ingenieria en Computadores)
- # Yosep Diaz Marin (Carné: 2026102165)        |   # Tecnologico de Costa Rica
+ # Yosep Diaz Marin (Carné: 2026102165)    |   # Tecnologico de Costa Rica
  # Evan Umaña Sojo  (Carné: 2026009696)        |   # Profesores: Jeff Schmidt Peralta, Diego Andres Mora Rojas      
 # ============================================================================================================ #
 
@@ -69,6 +69,7 @@ ALTO  = root.winfo_screenheight()
 menu      = tk.Frame(root, bg='black')
 loggeo    = tk.Frame(root, bg='black')
 registereo = tk.Frame(root, bg='black')
+top_frame  = tk.Frame(root, bg='#0d0d0d')
 
 # Conecta la configuracion con el main root y el menu
 config.inicializar(root, menu)
@@ -300,6 +301,74 @@ def abrir_register(jugador=1):
 # PARTE DEL CANVAS CUENTA
 
 cuenta_frame = tk.Frame(root, bg='#0d0d0d')
+
+def abrir_top_jugadores():
+    menu.pack_forget()
+    loggeo.pack_forget()
+    registereo.pack_forget()
+    cuenta_frame.pack_forget()
+    top_frame.pack_forget()
+
+    for widget in top_frame.winfo_children():
+        widget.destroy()
+
+    top_frame.pack(fill='both', expand=True)
+
+    # ── Leer y ordenar los datos del JSON ───────────────────────────
+    try:
+        with open('data/USER_INFO.json', 'r') as f:
+            datos = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        datos = []
+
+    # cada cuenta: [usuario, password, victorias_ataque, victorias_defensa]
+    top_atacante = sorted(datos, key=lambda c: c[2] if len(c) > 2 else 0, reverse=True)[:5]
+    top_defensor = sorted(datos, key=lambda c: c[3] if len(c) > 3 else 0, reverse=True)[:5]
+
+    # ── Título ───────────────────────────────────────────────────
+    tk.Label(top_frame, text='🏆  Top de Jugadores',
+             font=('Minecraft', 24), bg='#0d0d0d', fg='white').pack(pady=(50, 30))
+
+    columnas = tk.Frame(top_frame, bg='#0d0d0d')
+    columnas.pack(expand=True)
+
+    def crear_columna(parent, titulo, color, lista, indice_valor, etiqueta_valor):
+        col = tk.Frame(parent, bg='#111111', bd=3, relief='ridge',
+                        highlightbackground=color, highlightthickness=3)
+        col.pack(side='left', padx=30, pady=10, fill='both', expand=True)
+
+        tk.Label(col, text=titulo, font=('Minecraft', 14),
+                 bg='#111111', fg=color).pack(pady=(16, 10), padx=40)
+
+        if not lista:
+            tk.Label(col, text='Sin datos todavía', font=('Minecraft', 10),
+                     bg='#111111', fg='#666666').pack(pady=20, padx=30)
+        else:
+            for i, cuenta in enumerate(lista):
+                nombre = cuenta[0]
+                valor  = cuenta[indice_valor] if len(cuenta) > indice_valor else 0
+                fila = tk.Frame(col, bg='#111111')
+                fila.pack(fill='x', padx=24, pady=4)
+                tk.Label(fila, text=f'{i + 1}.', font=('Minecraft', 10),
+                         bg='#111111', fg='#888888', width=2, anchor='w').pack(side='left')
+                tk.Label(fila, text=nombre, font=('Minecraft', 10),
+                         bg='#111111', fg='white', anchor='w').pack(side='left', padx=8)
+                tk.Label(fila, text=f'{valor} {etiqueta_valor}', font=('Minecraft', 9),
+                         bg='#111111', fg=color, anchor='e').pack(side='right')
+
+        tk.Frame(col, bg='#111111', height=14).pack()  # padding inferior
+        return col
+
+    crear_columna(columnas, 'Top Atacante', '#e74c3c', top_atacante, 2, 'victorias')
+    crear_columna(columnas, 'Top Defensor', '#3498db', top_defensor, 3, 'victorias')
+
+    tk.Button(top_frame, text='← Volver', font=('Minecraft', 11),
+              command=lambda: [top_frame.pack_forget(), construir_menu(), menu.pack(fill='both', expand=True)],
+              bg='#1e1e1e', fg='white', activebackground='#2a2a2a',
+              activeforeground='white', relief='flat', cursor='hand2',
+              padx=16, pady=8).pack(pady=30)
+
+# -----------------------------------------------------------------------------------
 
 def abrir_cuenta():
     menu.pack_forget()
@@ -1112,6 +1181,7 @@ def construir_menu():
         ('Jugar',    popup_jugar),   # ← esto
         ('Ajustes',  abrir_configuracion),
         ('Cuenta',   abrir_cuenta),
+        ('Top',      abrir_top_jugadores),
         ('Salir',    root.destroy),
     ]
 
@@ -1127,7 +1197,7 @@ def construir_menu():
     ZOOM_HOVER   = 1.06  # factor de zoom al hacer hover
 
     # Estado de animacion por boton
-    estado = {i: {'brillo': 1.0, 'zoom': 1.0, 'target_b': 1.0, 'target_z': 1.0} for i in range(4)}
+    estado = {i: {'brillo': 1.0, 'zoom': 1.0, 'target_b': 1.0, 'target_z': 1.0} for i in range(len(BOTONES))}
 
     img_base = None
     try:
@@ -1148,9 +1218,10 @@ def construir_menu():
         
         # ... resto del código
 
-        # Centro total del grid
+        # Centro total del grid (2 columnas, tantas filas como hagan falta)
+        n_filas = (len(BOTONES) + 1) // 2
         grid_w = BOTON_W * 2 + GAP_X
-        grid_h = BOTON_H * 2 + GAP_Y
+        grid_h = BOTON_H * n_filas + GAP_Y * (n_filas - 1)
         ox = (w - grid_w) // 2
         oy = (h - grid_h) // 2
 
@@ -1221,7 +1292,7 @@ def construir_menu():
         if not canvas_menu.winfo_exists():
             return
         necesita = False
-        for i in range(4):
+        for i in range(len(BOTONES)):
             for key, tkey in [('brillo', 'target_b'), ('zoom', 'target_z')]:
                 diff = estado[i][tkey] - estado[i][key]
                 if abs(diff) > 0.001:

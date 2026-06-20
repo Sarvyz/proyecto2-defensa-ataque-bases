@@ -5,6 +5,7 @@
 import tkinter as tk
 from PIL import Image, ImageTk, ImageDraw
 from programs import game
+import json
 
 # -----------------------------------------------------------------------------------
 # COLORES PLACEHOLDER por facción — reemplazás con sprites después
@@ -438,6 +439,27 @@ def _panel_atacante(ctx):
               command=lambda: _atacante_listo(ctx)).pack(fill='x', padx=10, pady=8)
 
 
+def _actualizar_victoria(nombre_jugador, rol):
+    """Suma 1 victoria (como atacante o defensor) al jugador en data/USER_INFO.json.
+    Estructura de cada cuenta: [usuario, password, victorias_ataque, victorias_defensa]"""
+    try:
+        with open('data/USER_INFO.json', 'r') as f:
+            datos = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return
+
+    indice = 2 if rol == 'atacante' else 3
+    for cuenta in datos:
+        if cuenta[0] == nombre_jugador:
+            while len(cuenta) <= indice:
+                cuenta.append(0)
+            cuenta[indice] += 1
+            break
+
+    with open('data/USER_INFO.json', 'w') as f:
+        json.dump(datos, f, indent=4)
+
+
 def _panel_fin(ctx):
     panel   = ctx['panel']
     estado  = ctx['estado']
@@ -454,6 +476,9 @@ def _panel_fin(ctx):
     ganador_partida = partida.hay_ganador()
 
     if ganador_partida:
+        rol_ganador = 'atacante' if ganador_partida is estado.atacante else 'defensor'
+        _actualizar_victoria(ganador_partida.nombre, rol_ganador)
+
         tk.Label(panel, text=f'¡{ganador_partida.nombre}\nganó la partida!',
                  font=F_NORMAL, fg='#2ecc71', bg='#111111',
                  wraplength=PANEL_ANCHO-20).pack(pady=10)
