@@ -290,15 +290,23 @@ class ZonaAtacante:
 # -----------------------------------------------------------------------------------
 
 class SistemaCombate:
-    def __init__(self, grid, zona):
+    def __init__(self, grid, zona, grid_offset =None):
         self.grid = grid
         self.zona = zona
+        self.grid_offset = grid_offset or Pos(0, 0) #recibe un grid_offset y lo usa para
+                                                    #convertir torre.pos(local) a coordenadas totales antes de comparar contra
+                                                    
+    def _a_total(self, pos_local):
+        return Pos(pos_local.fila + self.grid_offset.fila,
+                    pos_local.col  + self.grid_offset.col)
+
 
     def _tropa_mas_cercana(self, torre, tropas):
-        en_rango = [t for t in tropas if t.vivo and torre.en_rango(t)]
-        if not en_rango:
-            return None
-        return min(en_rango, key=lambda t: torre.pos.distancia(t.pos))
+            torre_total = self._a_total(torre.pos)
+            en_rango = [t for t in tropas if t.vivo and torre_total.distancia(t.pos) <= torre.rango]
+            if not en_rango:
+                return None
+            return min(en_rango, key=lambda t: torre_total.distancia(t.pos))
 
     def atacar_canon(self, torre, tropas):
         obj = self._tropa_mas_cercana(torre, tropas)
@@ -332,10 +340,12 @@ class SistemaCombate:
             obj.quemando = TICKS_QUEMADURA
 
     def tropa_ataca(self, tropa, estructuras):
-        en_rango = [e for e in estructuras if e.vivo and tropa.en_rango(e)]
+        candidatas = [e for e in estructuras if e.vivo]
+        en_rango = [e for e in candidatas
+                    if tropa.pos.distancia(self._a_total(e.pos)) <= tropa.rango]
         if not en_rango:
             return None
-        obj = min(en_rango, key=lambda e: tropa.pos.distancia(e.pos))
+        obj = min(en_rango, key=lambda e: tropa.pos.distancia(self._a_total(e.pos)))
         daño_real = tropa.daño + tropa.bonus_daño_extra
         if tropa.nombre == 'Tanque' and obj.es_muro:
             daño_real *= MULT_DEMOLEDORA
@@ -429,11 +439,11 @@ class EstadoRonda:
         self.defensor     = defensor
         self.grid         = GridDefensor(faccion=defensor.faccion)
         self.zona         = ZonaAtacante(faccion=atacante.faccion)
-        self.combate      = SistemaCombate(self.grid, self.zona)
+        self.grid_offset  = Pos(MARGEN_ATACANTE, MARGEN_ATACANTE)
+        self.combate      = SistemaCombate(self.grid, self.zona, self.grid_offset)
         self.fase         = self.FASE_DEFENSOR
         self.turno        = 0
         self.ganador      = None
-        self.grid_offset  = Pos(MARGEN_ATACANTE, MARGEN_ATACANTE)
 
     # Defensor
     def defensor_colocar(self, estructura, pos):

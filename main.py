@@ -1,6 +1,6 @@
 # ============================================================================================================ #
  # Proyecto 2 Introduccion a la Programacion   |   # Grupo 1 CE (Ingenieria en Computadores)
- # Yosep Diaz Marin (Carné: 2026norecuerdo)    |   # Tecnologico de Costa Rica
+ # Yosep Diaz Marin (Carné: 2026102165)        |   # Tecnologico de Costa Rica
  # Evan Umaña Sojo  (Carné: 2026009696)        |   # Profesores: Jeff Schmidt Peralta, Diego Andres Mora Rojas      
 # ============================================================================================================ #
 
