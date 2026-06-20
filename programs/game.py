@@ -18,6 +18,16 @@ RONDAS_PARA_GANAR    = 3
 DINERO_INICIAL_DEFENSOR = 500
 DINERO_INICIAL_ATACANTE = 400
 
+# ── Economía entre rondas ───────────────────────────────────────────
+# el dinero se CONSERVA de una ronda a otra (solo se resetea en la ronda 1)
+# y, encima, al empezar cada ronda nueva se le suma un bono fijo a
+# ambos jugadores, más un extra para el atacante según el daño que le
+# hizo a las estructuras del defensor en la ronda anterior.
+BONO_RONDA_ATACANTE = 150   # dinero fijo que recibe el atacante al empezar cada ronda (desde la ronda 2)
+BONO_RONDA_DEFENSOR = 150   # dinero fijo que recibe el defensor al empezar cada ronda (desde la ronda 2)
+DINERO_POR_DAÑO      = 0.5  # por cada punto de daño que el atacante le hizo a torres/muros/base
+                             # en la ronda anterior, recibe esta fracción de dinero extra al empezar la siguiente
+
 RECOMPENSA_TORRE_DESTRUIDA = 50
 RECOMPENSA_TROPA_DESTRUIDA = 30
 
@@ -344,16 +354,22 @@ class SistemaCombate:
         en_rango = [e for e in candidatas
                     if tropa.pos.distancia(self._a_total(e.pos)) <= tropa.rango]
         if not en_rango:
-            return None
+            # No hay nada que atacar: ni destruyó nada (None) ni hizo daño (0)
+            return None, 0
         obj = min(en_rango, key=lambda e: tropa.pos.distancia(self._a_total(e.pos)))
         daño_real = tropa.daño + tropa.bonus_daño_extra
         if tropa.nombre == 'Tanque' and obj.es_muro:
             daño_real *= MULT_DEMOLEDORA
         vida_antes = obj.vida
         obj.recibir_daño(daño_real)
+        # daño_aplicado = cuánta vida perdió realmente la estructura. Usamos
+        # la diferencia (y no daño_real directo) por si recibir_daño() topa
+        # la vida en 0 en vez de dejarla negativa.
+        daño_aplicado = vida_antes - obj.vida
         if tropa.nombre == 'Samurai' and vida_antes > 0 and not obj.vivo:
             tropa.bonus_daño_extra += daño_real * BONUS_ESPADA_MAGICA
-        return obj if not obj.vivo else None
+        destruida = obj if not obj.vivo else None
+        return destruida, daño_aplicado
 
     def mover_tropa(self, tropa, grid_offset):
         if tropa.pos is None or self.grid.torre_central_pos is None:
@@ -411,6 +427,12 @@ class Jugador:
         self.faccion        = faccion
         self.dinero         = dinero
         self.rondas_ganadas = 0
+        # Cuánto daño le hizo este jugador (como atacante) a las
+        # estructuras del defensor DURANTE LA RONDA ACTUAL. Se usa al
+        # empezar la siguiente ronda para calcular el bono de dinero
+        # extra por daño (ver iniciar_ronda() en la clase Partida), y
+        # se reinicia a 0 ahí mismo una vez que ya se cobró el bono.
+        self.daño_infligido_ronda = 0
 
     def puede_pagar(self, coste):
         return self.dinero >= coste
@@ -548,7 +570,11 @@ class EstadoRonda:
         # Tropas se mueven y atacan
         for tropa in list(self.zona.tropas_vivas()):
             self.combate.mover_tropa(tropa, self.grid_offset)
-            destruida = self.combate.tropa_ataca(tropa, self.grid.estructuras_vivas())
+            destruida, daño_aplicado = self.combate.tropa_ataca(tropa, self.grid.estructuras_vivas())
+            # Guardamos el daño hecho esta ronda; se usa en Partida.iniciar_ronda()
+            # para calcular el bono de dinero extra del atacante en la próxima ronda.
+            if daño_aplicado > 0:
+                self.atacante.daño_infligido_ronda += daño_aplicado
             if destruida:
                 resultado['torres_destruidas'].append(destruida.nombre)
                 self.atacante.ganar_dinero(RECOMPENSA_TORRE_DESTRUIDA)
@@ -595,8 +621,28 @@ class Partida:
             atacante, defensor = self.jugador_b, self.jugador_a
         atacante.rol    = 'atacante'
         defensor.rol    = 'defensor'
-        atacante.dinero = DINERO_INICIAL_ATACANTE
-        defensor.dinero = DINERO_INICIAL_DEFENSOR
+
+        # ── Dinero entre rondas ─────────────────────────────────────
+        #  - En la ronda 1 (la primera de toda la partida) se usa el
+        #    dinero inicial fijo, como pide el enunciado.
+        #  - De la ronda 2 en adelante, el dinero de cada jugador se
+        #    CONSERVA (no se pisa) y se le suma:
+        #       · un bono fijo de inicio de ronda (BONO_RONDA_*), y
+        #       · para el atacante, un extra proporcional al daño que
+        #         le hizo a las estructuras del defensor en la ronda
+        #         anterior (guardado en daño_infligido_ronda).
+        if self.ronda_actual == 1:
+            atacante.dinero = DINERO_INICIAL_ATACANTE
+            defensor.dinero = DINERO_INICIAL_DEFENSOR
+        else:
+            bono_por_daño     = int(atacante.daño_infligido_ronda * DINERO_POR_DAÑO)
+            atacante.dinero  += BONO_RONDA_ATACANTE + bono_por_daño
+            defensor.dinero  += BONO_RONDA_DEFENSOR
+
+        # El daño ya se "cobró" como dinero arriba, así que se reinicia
+        # el contador para que la ronda que arranca ahora empiece de cero.
+        atacante.daño_infligido_ronda = 0
+
         self.estado     = EstadoRonda(atacante, defensor)
         return self.estado
 
