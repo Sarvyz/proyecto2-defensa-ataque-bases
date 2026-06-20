@@ -42,7 +42,30 @@ F_BOTON   = ('Minecraft', 12)
 # FUNCIÓN PRINCIPAL — llamada desde main.py
 # -----------------------------------------------------------------------------------
 
-def abrir_juego(root, partida):
+def abrir_juego(root, partida, volver_callback=None):
+    # ── volver_callback ───────────────────────────────────────────────
+    # Esta es una FUNCIÓN que nos pasa main.py (no la ejecutamos acá,
+    # solo la guardamos para usarla más adelante, cuando el jugador
+    # le dé clic a "Volver al menú" después de ganar la partida).
+    #
+    # ¿Por qué la necesitamos? Porque game_canvas.py NO sabe cómo
+    # reconstruir el menú principal (eso lo sabe hacer main.py, con
+    # su función construir_menu() y su frame "menu"). Antes, en vez
+    # de recibir esta función, este archivo hacía "import main" para
+    # tratar de llamar a esas cosas directamente — pero eso estaba
+    # MAL: Python no reconoce que "main" ya está corriendo (corre
+    # como "__main__"), así que "import main" volvía a ejecutar TODO
+    # main.py desde cero, abriendo una segunda ventana fantasma y
+    # rompiendo la aplicación original (eso era justo lo que causaba
+    # la pantalla negra/blanca trabada al volver al menú).
+    #
+    # La solución es más simple: que sea main.py quien nos entregue
+    # ("inyecte") la función que hay que llamar para volver al menú,
+    # y nosotros simplemente la guardamos y la llamamos cuando haga
+    # falta, sin necesidad de volver a importar nada.
+    # Si no nos pasan nada (volver_callback=None), no pasa nada raro,
+    # simplemente el botón "Volver al menú" no hará nada.
+
     # Ocultar todo lo que haya visible
     for widget in root.winfo_children():
         widget.pack_forget()
@@ -52,10 +75,13 @@ def abrir_juego(root, partida):
     juego_frame.pack(fill='both', expand=True)
 
     estado = partida.iniciar_ronda()
-    _construir_pantalla(root, juego_frame, partida, estado)
+    # Le pasamos el volver_callback a _construir_pantalla para que lo
+    # guarde dentro de "ctx" (el diccionario que comparten todas las
+    # funciones internas del juego) y así esté disponible más adelante.
+    _construir_pantalla(root, juego_frame, partida, estado, volver_callback)
 
 
-def _construir_pantalla(root, juego_frame, partida, estado):
+def _construir_pantalla(root, juego_frame, partida, estado, volver_callback=None):
     for widget in juego_frame.winfo_children():
         widget.destroy()
 
@@ -85,6 +111,12 @@ def _construir_pantalla(root, juego_frame, partida, estado):
         'colores_atk':    colores_atk,
         'root':           root,
         'juego_frame':    juego_frame,
+        # Guardamos la función que nos pasó main.py acá adentro de "ctx",
+        # que es el diccionario que se le pasa a TODAS las funciones del
+        # juego (_panel_fin, _volver_menu, etc). Así, cuando más adelante
+        # alguna de esas funciones necesite volver al menú, puede sacarla
+        # de ctx con ctx['volver_callback'] sin tener que reimportar nada.
+        'volver_callback': volver_callback,
         'imgs':           {},     # referencias a ImageTk para que no se descarten
     }
 
@@ -661,13 +693,27 @@ def _siguiente_ronda(ctx):
     ctx['estado']       = estado_nuevo
     ctx['seleccionado'] = None
     ctx['msg']          = ''
-    _construir_pantalla(ctx['root'], ctx['juego_frame'], ctx['partida'], estado_nuevo)
+    # OJO: _construir_pantalla() arma un "ctx" NUEVO desde cero cada vez
+    # que se llama (mirá la línea donde dice "ctx = {...}" más arriba).
+    # Eso significa que si no le volviéramos a pasar el volver_callback acá,
+    # se perdería al pasar de ronda y el botón "Volver al menú" dejaría de
+    # funcionar a partir de la ronda 2. Por eso lo sacamos del ctx viejo
+    # con ctx.get('volver_callback') y se lo volvemos a pasar al nuevo.
+    _construir_pantalla(ctx['root'], ctx['juego_frame'], ctx['partida'], estado_nuevo,
+                         ctx.get('volver_callback'))
 
 
 def _volver_menu(ctx):
-    from programs import config
+    # Esta función se ejecuta cuando el jugador le da clic a "Volver al
+    # menú" en la pantalla de fin de partida (ver _panel_fin).
+    #
+    # ANTES, acá había un "import main" + "main.construir_menu()", lo cual
+    # estaba MAL: causaba que se abriera una segunda ventana y rompía la
+    # aplicación con la pantalla negra/blanca trabada.
+    #
+    # AHORA simplemente: destruimos el frame del juego (ya no lo
+    # necesitamos), y llamamos a la función que main.py nos dejó guardada
+    # en ctx['volver_callback'] cuando arrancó la partida.
     ctx['juego_frame'].destroy()
-    # Reimportar y reconstruir el menú
-    import main
-    main.construir_menu()
-    main.menu.pack(fill='both', expand=True)
+    if ctx.get('volver_callback'):
+        ctx['volver_callback']()

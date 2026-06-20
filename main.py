@@ -1127,7 +1127,31 @@ def construir_menu():
                         dinero  = game.DINERO_INICIAL_DEFENSOR
                     )
                     partida = game.Partida(j_atacante, j_defensor)
-                    game_canvas.abrir_juego(root, partida)
+
+                    # ── volver_al_menu_principal ─────────────────────
+                    # Esta función chiquita es lo que hace falta para
+                    # poder volver del juego al menú correctamente.
+                    #
+                    # Hace exactamente lo mismo que ya hacían otros
+                    # botones "Volver" del proyecto (por ejemplo el de
+                    # abrir_cuenta): reconstruye el menú con
+                    # construir_menu() y lo vuelve a mostrar con
+                    # menu.pack(...).
+                    #
+                    # En vez de que game_canvas.py intente acceder a
+                    # "menu" y "construir_menu" por su cuenta (lo cual lo
+                    # obligaba a hacer "import main", y eso terminaba
+                    # abriendo una SEGUNDA ventana del juego, rompiendo
+                    # todo y dejando la pantalla negra/blanca trabada),
+                    # se la pasamos nosotros directamente como parámetro.
+                    # Así game_canvas.py no necesita saber nada de cómo
+                    # está armado main.py por dentro: solo recibe una
+                    # función y la llama cuando corresponde.
+                    def volver_al_menu_principal():
+                        construir_menu()
+                        menu.pack(fill='both', expand=True)
+
+                    game_canvas.abrir_juego(root, partida, volver_al_menu_principal)
 
                 abrir_escoger_facciones(
                     faccion_atacante = faccion_atk,
