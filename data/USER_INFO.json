@@ -1,60 +1,26 @@
 [
     [
-        "Evan",
-        "1234",
+        "Danel_bot",
+        "imabotest",
         0,
         0
     ],
     [
-        "Daniel",
-        "4567",
-        0,
-        0
-    ],
-    [
-        "Maria",
-        "8900",
-        0,
-        0
-    ],
-    [
-        "",
-        ""
-    ],
-    [
-        "asdf",
-        "asd",
+        "Mara_bot",
+        "imabotest",
         0,
         0
     ],
     [
         "sarv",
         "sarv",
-        1,
-        1
-    ],
-    [
-        "sarvy",
-        "1234",
-        0,
-        0
+        3,
+        4
     ],
     [
         "yosep",
         "yosep",
-        0,
-        1
-    ],
-    [
-        "yosep",
-        "yosep",
-        0,
-        0
-    ],
-    [
-        "evan",
-        "evan",
-        0,
+        4,
         2
     ]
 ]

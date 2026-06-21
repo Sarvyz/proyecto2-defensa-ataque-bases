@@ -84,13 +84,24 @@ def reproducir_musica_menu():
 # termina, _chequear_fin_de_pista() detecta que ya no está sonando nada
 # y reproduce la siguiente. Al llegar a la última, se vuelve a la primera
 
-def reproducir_musica_juego():
-    global _indice_playlist
-    _cancelar_chequeo_playlist()
-    _indice_playlist = 0           
-    _reproducir_pista_de_playlist()
-
-
+def reproducir_cancion_para_faccion(faccion):
+    """
+    Reproduce la canción correspondiente a la facción elegida.
+    faccion: 'zombie', 'robot', 'clash', etc.
+    """
+    _cancelar_chequeo_playlist()  # detiene el bucle de la playlist
+    mapa = {
+    'jardin_zombie': os.path.join(RUTA_MUSICA, 'PVZ_8bit.mp3'),
+    'medieval':      os.path.join(RUTA_MUSICA, 'clash_royale_8bit.mp3'),
+    'robotico':      os.path.join(RUTA_MUSICA, 'robot_8bit.mp3'),
+    }
+    ruta = mapa.get(faccion, PLAYLIST_JUEGO[0])  # por defecto PVZ
+    try:
+        pygame.mixer.music.load(ruta)
+        pygame.mixer.music.set_volume(_valor_musica * _valor_musica_juego)
+        pygame.mixer.music.play(loops=-1)  # o loops=0 si quieres que termine
+    except Exception:
+        pass
 
 def _reproducir_pista_de_playlist():
     """

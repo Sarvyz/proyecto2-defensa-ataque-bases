@@ -61,15 +61,15 @@ DEBUG, RECORDAR QUITAR ESTE COMENTARIO CUANDO TERMINE
 user1 = [
         "yosep",
         "yosep",
-        0,
-        1
+        4,
+        2
     ]
 
 user2 =     [
         "sarv",
         "sarv",
-        1,
-        1
+        3,
+        4
     ]
 
 # Creando el root
@@ -1268,7 +1268,7 @@ def construir_menu():
                     # Justo antes de mostrar el tablero de juego, cortamos
                     # la música del menú y arrancamos la playlist de las 3
                     # canciones de juego (una atrás de la otra, en loop).
-                    config.reproducir_musica_juego()
+                    config.reproducir_cancion_para_faccion(faccion_def)
                     game_canvas.abrir_juego(root, partida, volver_al_menu_principal)
 
 
