@@ -6,7 +6,7 @@ import heapq
 import random
 
 # -----------------------------------------------------------------------------------
-# CONSTANTES — modificá estos valores a gusto
+# CONSTANTES — modificar estos valores a gusto en caso de querer modificar el flujo de juego
 # -----------------------------------------------------------------------------------
 
 GRID_SIZE            = 10
@@ -114,13 +114,13 @@ class Estructura(Objeto):
 
 
 def crear_muro(faccion=''):
-    return Estructura('Muro', 80, 0, 0, 0, 20, es_muro=True, faccion=faccion)
+    return Estructura('Muro', 80, 0, 0, 0, 10, es_muro=True, faccion=faccion)
 
 def crear_torre_central(faccion=''):
     return Estructura('Torre Central', 300, 0, 0, 0, 0, faccion=faccion)
 
 def crear_canon(faccion=''):
-    return Estructura('Cañón', 120, 25, 4, 1.0, 80, faccion=faccion)
+    return Estructura('Cañón', 120, 10, 4, 1.0, 80, faccion=faccion)
 
 def crear_torre_rayo(faccion=''):
     return Estructura('Torre Rayo', 100, 20, 3, 0.8, 100, faccion=faccion)
@@ -139,6 +139,9 @@ class Tropa(Objeto):
         self.habilidad_activa = False
         self.quemando         = 0
         self.bonus_daño_extra = 0.0
+        # Posición visual flotante para animación suave porque antes era por casillas medio tosco
+        self.pos_visual       = None   # se inicializa en None, game_canvas la setea
+        self.pos_destino      = None   # hacia dónde se está moviendo visualmente
 
     def tick_quemadura(self):
         if self.quemando > 0:
@@ -153,7 +156,7 @@ def crear_tanque(faccion=''):
     return Tropa('Tanque', 200, 20, 1, 0.7, 120, 0.5, faccion)
 
 def crear_samurai(faccion=''):
-    return Tropa('Samurai', 100, 40, 1, 1.2, 150, 1.5, faccion)
+    return Tropa('Samurai', 120, 40, 1, 0.7, 150, 1.5, faccion)
 
 # -----------------------------------------------------------------------------------
 # PATHFINDING A*  (heapq es stdlib, no hay que instalar nada)
@@ -351,48 +354,93 @@ class SistemaCombate:
 
     def tropa_ataca(self, tropa, estructuras):
         candidatas = [e for e in estructuras if e.vivo]
-        en_rango = [e for e in candidatas
+        en_rango   = [e for e in candidatas
                     if tropa.pos.distancia(self._a_total(e.pos)) <= tropa.rango]
         if not en_rango:
-            # No hay nada que atacar: ni destruyó nada (None) ni hizo daño (0)
-            return None, 0
-        obj = min(en_rango, key=lambda e: tropa.pos.distancia(self._a_total(e.pos)))
+            return None, 0   # ← tiene que devolver tupla siempre
+
+        def prioridad(e):
+            if not e.es_muro and e.nombre != 'Torre Central':
+                return 0
+            elif e.es_muro:
+                return 1
+            else:
+                return 2
+
+        en_rango.sort(key=lambda e: (prioridad(e), tropa.pos.distancia(self._a_total(e.pos))))
+        obj = en_rango[0]
+
         daño_real = tropa.daño + tropa.bonus_daño_extra
         if tropa.nombre == 'Tanque' and obj.es_muro:
             daño_real *= MULT_DEMOLEDORA
-        vida_antes = obj.vida
+        vida_antes    = obj.vida
         obj.recibir_daño(daño_real)
-        # daño_aplicado = cuánta vida perdió realmente la estructura. Usamos
-        # la diferencia (y no daño_real directo) por si recibir_daño() topa
-        # la vida en 0 en vez de dejarla negativa.
         daño_aplicado = vida_antes - obj.vida
         if tropa.nombre == 'Samurai' and vida_antes > 0 and not obj.vivo:
             tropa.bonus_daño_extra += daño_real * BONUS_ESPADA_MAGICA
-        destruida = obj if not obj.vivo else None
-        return destruida, daño_aplicado
+        return (obj if not obj.vivo else None), daño_aplicado
 
     def mover_tropa(self, tropa, grid_offset):
         if tropa.pos is None or self.grid.torre_central_pos is None:
             return False
-        objetivo_total = Pos(
-            self.grid.torre_central_pos.fila + grid_offset.fila,
-            self.grid.torre_central_pos.col  + grid_offset.col
-        )
-        bloqueadas = set()
-        for pos_grid, e in self.grid.celdas.items():
+
+        # Elegir objetivo: torre defensiva más cercana, si no hay ninguna ir a la central
+        objetivo_local = None
+        mejor_dist     = float('inf')
+
+        for pos_local, e in self.grid.celdas.items():
+            if not e.vivo or e.es_muro:
+                continue
+            pos_total = self._a_total(pos_local)
+            dist      = tropa.pos.distancia(pos_total)
+            if e.nombre != 'Torre Central':
+                dist -= 1000   # prioridad a torres defensivas
+            if dist < mejor_dist:
+                mejor_dist     = dist
+                objetivo_local = pos_local
+
+        if objetivo_local is None:
+            return False
+
+        objetivo_total = self._a_total(objetivo_local)
+
+        # Muros bloquean a todos menos al tanque
+        pos_muros_total = set()
+        for pos_local, e in self.grid.celdas.items():
+            if e.vivo and e.es_muro:
+                pos_muros_total.add(self._a_total(pos_local))
+
+        # Torres no centrales bloquean el paso
+        pos_torres_total = set()
+        for pos_local, e in self.grid.celdas.items():
             if e.vivo and not e.es_muro and e.nombre != 'Torre Central':
-                bloqueadas.add(Pos(pos_grid.fila + grid_offset.fila,
-                                   pos_grid.col  + grid_offset.col))
+                pos_torres_total.add(self._a_total(pos_local))
+
+        if tropa.nombre == 'Tanque':
+            bloqueadas = pos_torres_total   # tanque ignora muros
+        else:
+            bloqueadas = pos_muros_total | pos_torres_total
+
         camino = astar(tropa.pos, objetivo_total, bloqueadas, GRID_TOTAL, GRID_TOTAL)
+
         if not camino:
+            # Sin camino libre, ignorar muros también (tropa los destruye)
+            camino = astar(tropa.pos, objetivo_total, pos_torres_total, GRID_TOTAL, GRID_TOTAL)
+
+        if not camino:
+            # Último recurso: camino sin ninguna restricción
             camino = astar(tropa.pos, objetivo_total, set(), GRID_TOTAL, GRID_TOTAL)
+
         if not camino:
             return False
+
         pasos     = max(1, int(tropa.vel_movimiento))
         nueva_pos = camino[min(pasos - 1, len(camino) - 1)]
-        otras     = {t.pos for t in self.zona.tropas_vivas() if t is not tropa}
+
+        otras = {t.pos for t in self.zona.tropas_vivas() if t is not tropa}
         if nueva_pos in otras:
             return False
+
         self.zona.tropas.pop(tropa.pos, None)
         tropa.pos = nueva_pos
         self.zona.tropas[nueva_pos] = tropa
@@ -615,16 +663,14 @@ class Partida:
 
     def iniciar_ronda(self):
         self.ronda_actual += 1
-        if self.ronda_actual % 2 == 1:
-            atacante, defensor = self.jugador_a, self.jugador_b
-        else:
-            atacante, defensor = self.jugador_b, self.jugador_a
-        atacante.rol    = 'atacante'
-        defensor.rol    = 'defensor'
+        # Los roles son FIJOS durante toda la partida.
+        # jugador_a siempre ataca, jugador_b siempre defiende.
+        atacante = self.jugador_a
+        defensor = self.jugador_b
 
         # ── Dinero entre rondas ─────────────────────────────────────
         #  - En la ronda 1 (la primera de toda la partida) se usa el
-        #    dinero inicial fijo, como pide el enunciado.
+        #    dinero inicial fijo.
         #  - De la ronda 2 en adelante, el dinero de cada jugador se
         #    CONSERVA (no se pisa) y se le suma:
         #       · un bono fijo de inicio de ronda (BONO_RONDA_*), y
@@ -635,9 +681,9 @@ class Partida:
             atacante.dinero = DINERO_INICIAL_ATACANTE
             defensor.dinero = DINERO_INICIAL_DEFENSOR
         else:
-            bono_por_daño     = int(atacante.daño_infligido_ronda * DINERO_POR_DAÑO)
-            atacante.dinero  += BONO_RONDA_ATACANTE + bono_por_daño
-            defensor.dinero  += BONO_RONDA_DEFENSOR
+            bono_por_daño    = int(atacante.daño_infligido_ronda * DINERO_POR_DAÑO)
+            atacante.dinero += BONO_RONDA_ATACANTE + bono_por_daño
+            defensor.dinero += BONO_RONDA_DEFENSOR
 
         # El daño ya se "cobró" como dinero arriba, así que se reinicia
         # el contador para que la ronda que arranca ahora empiece de cero.

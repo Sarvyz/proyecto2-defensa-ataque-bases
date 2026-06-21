@@ -51,8 +51,26 @@ from programs import config
 # -----------------------------------------------------------------------------------
 
 # Variables globales de sesión
+
+'''
+DEBUG, RECORDAR QUITAR ESTE COMENTARIO CUANDO TERMINE
 user1 = None
 user2 = None
+DEBUG, RECORDAR QUITAR ESTE COMENTARIO CUANDO TERMINE
+'''
+user1 = [
+        "yosep",
+        "yosep",
+        0,
+        1
+    ]
+
+user2 =     [
+        "sarv",
+        "sarv",
+        1,
+        1
+    ]
 
 # Creando el root
 root = tk.Tk()
@@ -1030,7 +1048,98 @@ def abrir_escoger_facciones(faccion_atacante=None, turno='atacante', callback=No
 
     # Comienza
     animar()
-    
+
+# -----------------------------------------------------------------------------------
+# Pagina de creditos (adicion extra, no era necesaria)
+# -----------------------------------------------------------------------------------
+
+def abrir_creditos():
+    menu.pack_forget()
+    cuenta_frame.pack_forget()
+    top_frame.pack_forget()
+
+    creditos_frame = tk.Frame(root, bg='#0d0d0d')
+    creditos_frame.pack(fill='both', expand=True)
+
+    canvas = tk.Canvas(creditos_frame, bg='#0d0d0d', highlightthickness=0)
+    canvas.pack(fill='both', expand=True)
+
+    # Fondo opcional
+    try:
+        img_bg = Image.open('assets/img/creditos_fondo.png').convert('RGBA')
+        w = root.winfo_width()
+        h = root.winfo_height()
+        img_bg = img_bg.resize((w, h), Image.NEAREST)
+        canvas._bg = ImageTk.PhotoImage(img_bg)
+        canvas.create_image(0, 0, image=canvas._bg, anchor='nw')
+    except:
+        pass
+
+    # Tarjeta central
+    tarjeta = tk.Frame(canvas, bg='#111111', bd=3, relief='ridge',
+                        highlightbackground='#f1c40f', highlightthickness=3)
+    tarjeta.place(relx=0.5, rely=0.5, anchor='center', width=700, height=520)
+
+    # Título
+    tk.Label(tarjeta, text='Créditos', font=('Minecraft', 20),
+             fg='#f1c40f', bg='#111111').pack(pady=(28, 6))
+
+    tk.Frame(tarjeta, bg='#333333', height=1).pack(fill='x', padx=30, pady=(0, 16))
+
+    # Integrantes
+    tk.Label(tarjeta, text='Integrantes', font=('Minecraft', 15),
+             fg='#aaaaaa', bg='#111111').pack()
+
+    integrantes_frame = tk.Frame(tarjeta, bg='#111111')
+    integrantes_frame.pack(pady=(6, 14))
+
+    integrantes = [
+        ('Yosep Díaz Marín',  '2026102165'),
+        ('Evan Umaña Sojo',   '2026009696'),
+    ]
+    for nombre, carne in integrantes:
+        fila = tk.Frame(integrantes_frame, bg='#111111')
+        fila.pack(fill='x', pady=2)
+        tk.Label(fila, text=nombre, font=('Minecraft', 15),
+                 fg='white', bg='#111111', width=22, anchor='e').pack(side='left', padx=(0, 10))
+        tk.Label(fila, text=f'Carné: {carne}', font=('Minecraft', 15),
+                 fg='#f1c40f', bg='#111111', anchor='w').pack(side='left')
+
+    tk.Frame(tarjeta, bg='#333333', height=1).pack(fill='x', padx=30, pady=(0, 14))
+
+    # Curso
+    tk.Label(tarjeta, text='Curso', font=('Minecraft', 15),
+             fg='#aaaaaa', bg='#111111').pack()
+
+    curso_info = [
+        ('Introducción a la Programación',  'white'),
+        ('Grupo 1 — Ingeniería en Computadores', '#aaaaaa'),
+        ('Prof. Jeff Schmidt Peralta', '#aaaaaa'),
+        ('Prof. Diego Andrés Mora Rojas', '#aaaaaa'),
+        ('Instituto Tecnológico de Costa Rica  ·  2026', '#f1c40f'),
+    ]
+    for texto, color in curso_info:
+        tk.Label(tarjeta, text=texto, font=('Minecraft', 15),
+                 fg=color, bg='#111111').pack(pady=2)
+
+    tk.Frame(tarjeta, bg='#333333', height=1).pack(fill='x', padx=30, pady=(14, 10))
+
+    # Disclaimer
+    tk.Label(tarjeta,
+             text='Todas las referencias a personajes y escenarios populares fueron utilizadas\n'
+                  'sin fines de lucro, comerciales ni de distribución, únicamente para uso\n'
+                  'académico de este proyecto y sin intención de infringir derechos de autor.',
+             font=('Minecraft', 10), fg='#666666', bg='#111111',
+             justify='center').pack(pady=(0, 10))
+
+    # Botón volver
+    tk.Button(creditos_frame, text='← Volver al menú', font=('Minecraft', 15),
+              command=lambda: [creditos_frame.destroy(), construir_menu(),
+                               menu.pack(fill='both', expand=True)],
+              bg='#0d0d0d', fg='#888888', activebackground='#0d0d0d',
+              activeforeground='white', relief='flat', cursor='hand2',
+              padx=12, pady=8).pack(side='bottom', pady=14)
+
 # -----------------------------------------------------------------------------------
 # MENU PRINCIPAL CON CANVAS
 # -----------------------------------------------------------------------------------
@@ -1212,10 +1321,11 @@ def construir_menu():
                                   tag_id='volver')
 
     BOTONES = [
-        ('Jugar',    popup_jugar),   # ← esto
+        ('Jugar',    popup_jugar),   # esto es importante
         ('Ajustes',  abrir_configuracion),
         ('Cuenta',   abrir_cuenta),
         ('Top',      abrir_top_jugadores),
+        ('Creditos', abrir_creditos),
         ('Salir',    root.destroy),
     ]
 

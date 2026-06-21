@@ -42,6 +42,25 @@ F_BOTON   = ('Minecraft', 12)
 # FUNCIÓN PRINCIPAL — llamada desde main.py
 # -----------------------------------------------------------------------------------
 
+'''Esta parte es para la futura carga de sprites (a commit actual, no hay ninguno aun que cargar)'''
+# Cache de sprites ya cargados para no releerlos del disco cada frame
+_cache_sprites = {}
+
+def _cargar_sprite(ruta, ancho, alto):
+    """Carga un sprite escalado sin blur (NEAREST). Usa cache para no releer disco."""
+    key = (ruta, ancho, alto)
+    if key in _cache_sprites:
+        return _cache_sprites[key]
+    try:
+        img = Image.open(ruta).convert('RGBA')
+        img = img.resize((ancho, alto), Image.NEAREST)   # NEAREST = sin blur, pixel art nítido
+        img_tk = ImageTk.PhotoImage(img)
+        _cache_sprites[key] = img_tk
+        return img_tk
+    except:
+        _cache_sprites[key] = None
+        return None
+
 def abrir_juego(root, partida, volver_callback=None):
     # ── volver_callback ───────────────────────────────────────────────
     # Esta es una FUNCIÓN que nos pasa main.py (no la ejecutamos acá,
@@ -136,39 +155,44 @@ def _dibujar_todo(ctx):
     colores = ctx['colores_def']
     canvas.delete('all')
 
-    T = TAMAÑO_TILE
-    M = game.MARGEN_ATACANTE
-
-    # Fondo total (zona atacante)
+    T     = TAMAÑO_TILE
+    M     = game.MARGEN_ATACANTE
     total = game.GRID_TOTAL
-    canvas.create_rectangle(0, 0, total*T, total*T,
-                             fill='#1a1a1a', outline='')
 
-    # Grid del defensor (zona central)
+    # Fondo del juego — intenta cargar imagen, fallback a color
+    faccion = estado.defensor.faccion
+    img_fondo = _cargar_sprite(f'assets/img/{faccion}_fondo_juego.png',
+                                total * T, total * T)
+    if img_fondo:
+        canvas.create_image(0, 0, image=img_fondo, anchor='nw')
+    else:
+        canvas.create_rectangle(0, 0, total*T, total*T, fill='#1a1a1a', outline='')
+
+    # Grid del defensor
     ox = M * T
     oy = M * T
-    canvas.create_rectangle(ox, oy,
-                             ox + game.GRID_SIZE * T,
-                             oy + game.GRID_SIZE * T,
-                             fill=colores['grid'], outline='')
+    img_grid = _cargar_sprite(f'assets/img/{faccion}_fondo_grid.png',
+                               game.GRID_SIZE * T, game.GRID_SIZE * T)
+    if img_grid:
+        canvas.create_image(ox, oy, image=img_grid, anchor='nw')
+    else:
+        canvas.create_rectangle(ox, oy,
+                                  ox + game.GRID_SIZE*T, oy + game.GRID_SIZE*T,
+                                  fill=colores['grid'], outline='')
 
     # Líneas del grid defensor
     for i in range(game.GRID_SIZE + 1):
-        canvas.create_line(ox + i*T, oy,
-                            ox + i*T, oy + game.GRID_SIZE*T,
+        canvas.create_line(ox+i*T, oy, ox+i*T, oy+game.GRID_SIZE*T,
                             fill=colores['linea'], width=1)
-        canvas.create_line(ox, oy + i*T,
-                            ox + game.GRID_SIZE*T, oy + i*T,
+        canvas.create_line(ox, oy+i*T, ox+game.GRID_SIZE*T, oy+i*T,
                             fill=colores['linea'], width=1)
 
-    # Líneas de la zona atacante (más tenues)
+    # Líneas zona atacante
     for i in range(game.GRID_TOTAL + 1):
-        canvas.create_line(i*T, 0, i*T, total*T,
-                            fill='#2a2a2a', width=1)
-        canvas.create_line(0, i*T, total*T, i*T,
-                            fill='#2a2a2a', width=1)
+        canvas.create_line(i*T, 0, i*T, total*T, fill='#2a2a2a', width=1)
+        canvas.create_line(0, i*T, total*T, i*T,  fill='#2a2a2a', width=1)
 
-    # Estructuras del defensor
+    # Estructuras
     for pos, estructura in estado.grid.celdas.items():
         if not estructura.vivo:
             continue
@@ -176,7 +200,7 @@ def _dibujar_todo(ctx):
         y = (pos.fila + M) * T
         _dibujar_estructura(canvas, x, y, T, estructura, colores, ctx)
 
-    # Tropas del atacante (coords totales)
+    # Tropas
     colores_atk = ctx['colores_atk']
     for pos, tropa in estado.zona.tropas.items():
         if not tropa.vivo:
@@ -185,17 +209,16 @@ def _dibujar_todo(ctx):
         y = pos.fila * T
         _dibujar_tropa(canvas, x, y, T, tropa, colores_atk, ctx)
 
-    # Hover highlight
+    # Hover
     if ctx.get('hover_pos'):
         hpos = ctx['hover_pos']
         canvas.create_rectangle(
-            hpos.col * T + 2, hpos.fila * T + 2,
-            hpos.col * T + T - 2, hpos.fila * T + T - 2,
+            hpos.col*T+2, hpos.fila*T+2,
+            hpos.col*T+T-2, hpos.fila*T+T-2,
             outline='white', width=2, dash=(4, 3)
         )
 
 def _dibujar_estructura(canvas, x, y, T, e, colores, ctx):
-    # Normalizar nombre para la ruta
     key = (e.nombre.lower()
            .replace(' ', '_')
            .replace('ó', 'o')
@@ -211,59 +234,30 @@ def _dibujar_estructura(canvas, x, y, T, e, colores, ctx):
     }
     color = color_map.get(key, '#888888')
 
-    dibujado_con_sprite = False
-    try:
-        ruta = f'assets/img/{e.faccion}_{key}.png'
-        img_pil = Image.open(ruta).convert('RGBA')
+    alto_sprite  = int(T * (1.0 if e.es_muro else 1.8))
+    ancho_sprite = T
+    ruta         = f'assets/img/{e.faccion}_{key}.png'
+    img_tk       = _cargar_sprite(ruta, ancho_sprite, alto_sprite)
 
-        # Las estructuras ocupan exactamente el tile de ancho
-        # y un poco más de alto para verse bien en perspectiva isométrica
-        es_muro = e.es_muro
-        alto_sprite  = int(T * (1.0 if es_muro else 1.8))
-        ancho_sprite = T
-
-        img_pil = img_pil.resize((ancho_sprite, alto_sprite), Image.NEAREST)
-        img_tk  = ImageTk.PhotoImage(img_pil)
-
-        ref_key = f'struct_{e.faccion}_{key}_{x}_{y}'
-        ctx['imgs'][ref_key] = img_tk
-
-        # Anclar en la base-centro del tile
-        cx = x + T // 2
+    if img_tk:
+        cx     = x + T // 2
         base_y = y + T
         canvas.create_image(cx, base_y, image=img_tk, anchor='s')
-        dibujado_con_sprite = True
-
-    except:
-        pass
-
-    if not dibujado_con_sprite:
+    else:
         pad = 6 if e.es_muro else 4
         canvas.create_rectangle(x+pad, y+pad, x+T-pad, y+T-pad,
                                   fill=color, outline='white', width=1)
-        canvas.create_text(x + T//2, y + T//2,
-                            text=e.nombre[0],
-                            fill='white',
-                            font=('Minecraft', max(8, T//5)))
+        canvas.create_text(x+T//2, y+T//2, text=e.nombre[0],
+                            fill='white', font=('Minecraft', max(8, T//5)))
 
-    # Barra de vida — siempre encima, pegada al borde superior del tile
     if e.vida < e.vida_max:
-        barra_w  = T - 8
-        vida_pct = e.vida / e.vida_max
-        canvas.create_rectangle(x+4, y+2, x+4+barra_w, y+7,
-                                  fill='#333333', outline='')
-        color_vida = '#2ecc71' if vida_pct > 0.5 else '#e67e22' if vida_pct > 0.25 else '#e74c3c'
-        canvas.create_rectangle(x+4, y+2,
-                                  x+4+int(barra_w*vida_pct), y+7,
-                                  fill=color_vida, outline='')
+        _dibujar_barra_vida(canvas, x, y, T, e.vida, e.vida_max)
 
 
 def _dibujar_tropa(canvas, x, y, T, t, colores, ctx):
     key = (t.nombre.lower()
-           .replace('á', 'a')
-           .replace('é', 'e')
-           .replace('í', 'i')
-           .replace('ú', 'u'))
+           .replace('á', 'a').replace('é', 'e')
+           .replace('í', 'i').replace('ú', 'u'))
 
     color_map = {
         'basica':  colores.get('basica',  '#2ecc71'),
@@ -272,65 +266,60 @@ def _dibujar_tropa(canvas, x, y, T, t, colores, ctx):
     }
     color = color_map.get(key, '#aaaaaa')
 
-    dibujado_con_sprite = False
+    mult = {'tanque': 1.8, 'samurai': 1.6, 'basica': 1.5}.get(key, 1.6)
+    alto_sprite  = int(T * mult)
+    ancho_sprite = int(alto_sprite * 1.0)   # 1:1 por defecto; se corrige con la imagen real
+    ruta         = f'assets/img/{t.faccion}_{key}.png'
+
+    # Para la tropa necesitamos mantener proporción, así que la cargamos sin cache fija
+    img_tk = None
     try:
-        ruta = f'assets/img/{t.faccion}_{key}.png'
-        img_pil = Image.open(ruta).convert('RGBA')
-
-        # Las tropas son más altas que el tile — 1.8x para el gigante/tanque,
-        # 1.6x para las demás. Ajustá estos valores según tus sprites
-        mult = {
-            'tanque':  1.8,
-            'samurai': 1.6,
-            'basica':  1.5,
-        }.get(key, 1.6)
-
-        alto_sprite  = int(T * mult)
-        # Mantener proporción original del sprite
+        img_pil      = Image.open(ruta).convert('RGBA')
         ancho_sprite = int(alto_sprite * img_pil.width / img_pil.height)
-        # Que no sea más ancho que el tile
         if ancho_sprite > T:
             ancho_sprite = T
-            alto_sprite  = int(ancho_sprite * img_pil.height / img_pil.width)
-
-        img_pil = img_pil.resize((ancho_sprite, alto_sprite), Image.NEAREST)
-        img_tk  = ImageTk.PhotoImage(img_pil)
-
-        ref_key = f'tropa_{t.faccion}_{key}_{x}_{y}'
-        ctx['imgs'][ref_key] = img_tk
-
-        # Anclar en la base-centro del tile, el sprite sube hacia arriba
-        cx     = x + T // 2
-        base_y = y + T
-        canvas.create_image(cx, base_y, image=img_tk, anchor='s')
-        dibujado_con_sprite = True
-
+            alto_sprite  = int(T * img_pil.height / img_pil.width)
+        key_cache = (ruta, ancho_sprite, alto_sprite)
+        if key_cache in _cache_sprites:
+            img_tk = _cache_sprites[key_cache]
+        else:
+            img_r  = img_pil.resize((ancho_sprite, alto_sprite), Image.NEAREST)
+            img_tk = ImageTk.PhotoImage(img_r)
+            _cache_sprites[key_cache] = img_tk
     except:
         pass
 
-    if not dibujado_con_sprite:
-        radio = T//2 - 5
-        cx, cy = x + T//2, y + T//2
+    if img_tk:
+        cx     = int(x) + T // 2
+        base_y = int(y) + T
+        canvas.create_image(cx, base_y, image=img_tk, anchor='s')
+    else:
+        radio  = T//2 - 5
+        cx, cy = int(x) + T//2, int(y) + T//2
         canvas.create_oval(cx-radio, cy-radio, cx+radio, cy+radio,
                             fill=color, outline='white', width=1)
         canvas.create_text(cx, cy, text=t.nombre[0],
                             fill='white', font=('Minecraft', max(8, T//5)))
 
-    # Barra de vida
-    barra_w  = T - 8
-    vida_pct = t.vida / t.vida_max
-    canvas.create_rectangle(x+4, y+2, x+4+barra_w, y+7,
-                              fill='#333333', outline='')
-    color_vida = '#2ecc71' if vida_pct > 0.5 else '#e67e22' if vida_pct > 0.25 else '#e74c3c'
-    canvas.create_rectangle(x+4, y+2,
-                              x+4+int(barra_w*vida_pct), y+7,
-                              fill=color_vida, outline='')
+    _dibujar_barra_vida(canvas, x, y, T, t.vida, t.vida_max)
 
-    # Íconos de estado
     if t.quemando > 0:
-        canvas.create_text(x+T-8, y+10, text='🔥', font=('Arial', 9))
+        canvas.create_text(int(x)+T-8, int(y)+10, text='🔥', font=('Arial', 9))
     if t.habilidad_activa:
-        canvas.create_text(x+10, y+10, text='⚡', font=('Arial', 9))
+        canvas.create_text(int(x)+10,  int(y)+10, text='⚡', font=('Arial', 9))
+
+
+def _dibujar_barra_vida(canvas, x, y, T, vida, vida_max):
+    if vida >= vida_max:
+        return
+    barra_w  = T - 8
+    vida_pct = vida / vida_max
+    canvas.create_rectangle(int(x)+4, int(y)+2, int(x)+4+barra_w, int(y)+7,
+                              fill='#333333', outline='')
+    color = '#2ecc71' if vida_pct > 0.5 else '#e67e22' if vida_pct > 0.25 else '#e74c3c'
+    canvas.create_rectangle(int(x)+4, int(y)+2,
+                              int(x)+4+int(barra_w*vida_pct), int(y)+7,
+                              fill=color, outline='')
 
 # -----------------------------------------------------------------------------------
 # PANEL LATERAL
@@ -399,11 +388,50 @@ def _construir_panel(ctx):
         _panel_fin(ctx)
 
     _separador(panel)
+
+    # Botón salir — siempre visible en todas las fases
+    
+    _separador(panel)
+    tk.Button(panel, text='✕  Salir de la partida', font=F_PEQUEÑO,
+              bg='#1e1e1e', fg='#e05252', activebackground='#2a2a2a',
+              relief='flat', cursor='hand2', pady=6,
+              command=lambda: _popup_salir(ctx)).pack(fill='x', padx=10, pady=4)
     ctx['msg_label'] = tk.Label(panel, text=ctx['msg'],
                                  font=F_PEQUEÑO, fg='#e05252',
                                  bg='#111111', wraplength=PANEL_ANCHO-20)
     ctx['msg_label'].pack(pady=8)
 
+# Esta funcion es nueva, es para hacer el popup de salir
+def _popup_salir(ctx):
+    panel = ctx['panel']
+
+    overlay = tk.Frame(ctx['juego_frame'], bg='black')
+    overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+    popup = tk.Frame(overlay, bg='#1a1a1a', bd=0)
+    popup.place(relx=0.5, rely=0.5, anchor='center', width=460, height=200)
+
+    tk.Label(popup, text='¿Están seguros?', font=('Minecraft', 13),
+             fg='white', bg='#1a1a1a').pack(pady=(24, 6))
+    tk.Label(popup,
+             text='Todo el progreso de la partida\nse perderá y no habrá ganador.',
+             font=('Minecraft', 9), fg='#e05252', bg='#1a1a1a',
+             justify='center').pack(pady=(0, 16))
+
+    btns = tk.Frame(popup, bg='#1a1a1a')
+    btns.pack()
+
+    def confirmar_salir():
+        overlay.destroy()
+        _volver_menu(ctx)
+
+    tk.Button(btns, text='Sí, salir', font=('Minecraft', 10),
+              bg='#c0392b', fg='white', relief='flat', cursor='hand2',
+              padx=14, pady=8, command=confirmar_salir).pack(side='left', padx=10)
+
+    tk.Button(btns, text='Cancelar', font=('Minecraft', 10),
+              bg='#1e1e1e', fg='white', relief='flat', cursor='hand2',
+              padx=14, pady=8, command=overlay.destroy).pack(side='left', padx=10)
 
 def _panel_defensor(ctx):
     panel  = ctx['panel']
@@ -538,13 +566,25 @@ def _panel_combate(ctx):
              fg='#f39c12', bg='#111111').pack(pady=12)
 
 
+# Velocidad de interpolación visual — 1.0 = instantáneo, 0.1 = muy lento
+VELOCIDAD_LERP = 0.18
+MS_ENTRE_TURNOS = 800
+MS_ANIMACION    = 16   # ~60fps para la animación
+
 def _iniciar_combate_automatico(ctx):
-    """Corre los turnos automáticamente con delay entre cada uno."""
-    MS_ENTRE_TURNOS = 600   # milisegundos entre turno y turno — ajustá a gusto
+    MS_ENTRE_TURNOS = 600
 
     def siguiente_turno():
+
+        '''DEBUG, RECORDAR BORRAR'''
+        
+        print(f'turno {ctx["estado"].turno}, fase: {ctx["estado"].fase}')
+        
+        '''DEBUG, RECORDAR BORRAR'''
+        
+        if not ctx['canvas'].winfo_exists():
+            return
         if ctx['estado'].fase != game.EstadoRonda.FASE_COMBATE:
-            # Terminó el combate, actualizar panel
             _construir_panel(ctx)
             _dibujar_todo(ctx)
             return
@@ -561,11 +601,11 @@ def _iniciar_combate_automatico(ctx):
         _dibujar_todo(ctx)
         _construir_panel(ctx)
 
-        # Si no terminó, programar el siguiente turno
-        if ctx['estado'].fase == game.EstadoRonda.FASE_COMBATE:
-            ctx['canvas'].after(MS_ENTRE_TURNOS, siguiente_turno)
+        if resultado.get('fin'):
+            return
 
-    # Primer turno
+        ctx['canvas'].after(MS_ENTRE_TURNOS, siguiente_turno)
+
     ctx['canvas'].after(MS_ENTRE_TURNOS, siguiente_turno)
 
 # -----------------------------------------------------------------------------------

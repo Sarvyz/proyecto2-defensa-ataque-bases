@@ -23,7 +23,7 @@ _root = None
 _menu = None
 
 # Valores de volumen. Van de 0.0 min a 1.0 max
-_valor_musica  = 0.8
+_valor_musica  = 0.2
 _valor_efectos = 0.8
 _valor_musica_juego = 0.4  #baja el sonido de la musica que esta mientras se juega
                            #para poder escuchar los sonidos
