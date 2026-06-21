@@ -1147,11 +1147,21 @@ def construir_menu():
                     # Así game_canvas.py no necesita saber nada de cómo
                     # está armado main.py por dentro: solo recibe una
                     # función y la llama cuando corresponde.
+                    #
+                    # De paso, acá es también donde volvemos a poner la
+                    # música del MENÚ (en loop), cortando la playlist de
+                    # canciones de juego que estuviera sonando.
                     def volver_al_menu_principal():
+                        config.reproducir_musica_menu()
                         construir_menu()
                         menu.pack(fill='both', expand=True)
 
+                    # Justo antes de mostrar el tablero de juego, cortamos
+                    # la música del menú y arrancamos la playlist de las 3
+                    # canciones de juego (una atrás de la otra, en loop).
+                    config.reproducir_musica_juego()
                     game_canvas.abrir_juego(root, partida, volver_al_menu_principal)
+
 
                 abrir_escoger_facciones(
                     faccion_atacante = faccion_atk,
