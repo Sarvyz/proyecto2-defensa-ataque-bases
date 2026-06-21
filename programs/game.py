@@ -142,6 +142,7 @@ class Tropa(Objeto):
         # Posición visual flotante para animación suave porque antes era por casillas medio tosco
         self.pos_visual       = None   # se inicializa en None, game_canvas la setea
         self.pos_destino      = None   # hacia dónde se está moviendo visualmente
+        self.direccion_visual = 'der'   # 'izq' o 'der' — para flip del sprite
 
     def tick_quemadura(self):
         if self.quemando > 0:
@@ -153,7 +154,7 @@ def crear_basica(faccion=''):
     return Tropa('Básica', 80, 15, 1, 1.0, 50, 1.0, faccion)
 
 def crear_tanque(faccion=''):
-    return Tropa('Tanque', 200, 20, 1, 0.7, 120, 0.5, faccion)
+    return Tropa('Tanque', 350, 20, 1, 0.3, 100, 0.5, faccion)
 
 def crear_samurai(faccion=''):
     return Tropa('Samurai', 120, 40, 1, 0.7, 150, 1.5, faccion)
@@ -394,7 +395,7 @@ class SistemaCombate:
             pos_total = self._a_total(pos_local)
             dist      = tropa.pos.distancia(pos_total)
             if e.nombre != 'Torre Central':
-                dist -= 1000   # prioridad a torres defensivas
+                dist -= 1000
             if dist < mejor_dist:
                 mejor_dist     = dist
                 objetivo_local = pos_local
@@ -404,31 +405,27 @@ class SistemaCombate:
 
         objetivo_total = self._a_total(objetivo_local)
 
-        # Muros bloquean a todos menos al tanque
         pos_muros_total = set()
         for pos_local, e in self.grid.celdas.items():
             if e.vivo and e.es_muro:
                 pos_muros_total.add(self._a_total(pos_local))
 
-        # Torres no centrales bloquean el paso
         pos_torres_total = set()
         for pos_local, e in self.grid.celdas.items():
             if e.vivo and not e.es_muro and e.nombre != 'Torre Central':
                 pos_torres_total.add(self._a_total(pos_local))
 
         if tropa.nombre == 'Tanque':
-            bloqueadas = pos_torres_total   # tanque ignora muros
+            bloqueadas = pos_torres_total
         else:
             bloqueadas = pos_muros_total | pos_torres_total
 
         camino = astar(tropa.pos, objetivo_total, bloqueadas, GRID_TOTAL, GRID_TOTAL)
 
         if not camino:
-            # Sin camino libre, ignorar muros también (tropa los destruye)
             camino = astar(tropa.pos, objetivo_total, pos_torres_total, GRID_TOTAL, GRID_TOTAL)
 
         if not camino:
-            # Último recurso: camino sin ninguna restricción
             camino = astar(tropa.pos, objetivo_total, set(), GRID_TOTAL, GRID_TOTAL)
 
         if not camino:
@@ -436,6 +433,12 @@ class SistemaCombate:
 
         pasos     = max(1, int(tropa.vel_movimiento))
         nueva_pos = camino[min(pasos - 1, len(camino) - 1)]
+
+        # Guardar dirección horizontal para el flip del sprite
+        if nueva_pos.col < tropa.pos.col:
+            tropa.direccion_visual = 'izq'
+        elif nueva_pos.col > tropa.pos.col:
+            tropa.direccion_visual = 'der'
 
         otras = {t.pos for t in self.zona.tropas_vivas() if t is not tropa}
         if nueva_pos in otras:

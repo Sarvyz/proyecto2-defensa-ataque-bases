@@ -8,7 +8,7 @@ from programs import game
 import json
 
 # -----------------------------------------------------------------------------------
-# COLORES PLACEHOLDER por facción — reemplazás con sprites después
+# COLORES PLACEHOLDER por facción — reemplaza con sprites después
 # -----------------------------------------------------------------------------------
 
 COLORES_FACCION = {
@@ -29,6 +29,13 @@ COLORES_FACCION = {
                       'tanque': '#4dabf7', 'samurai': '#ffd43b'},
 }
 
+# Torres que tienen sprites por dirección — el resto usa animación simple
+TORRES_CON_DIRECCION = {
+    'medieval':      ['torre_fuego', 'canon'],
+    'jardin_zombie': ['canon'],
+    'robotico':      [],
+}
+
 TAMAÑO_TILE  = 56
 PANEL_ANCHO  = 320   # era 280
 
@@ -37,6 +44,146 @@ F_TITULO  = ('Minecraft', 15)
 F_NORMAL  = ('Minecraft', 12)
 F_PEQUEÑO = ('Minecraft', 10)
 F_BOTON   = ('Minecraft', 12)
+
+# -----------------------------------------------------------------------------------
+# SISTEMA DE ANIMACIÓN DE SPRITES
+# -----------------------------------------------------------------------------------
+
+# Cache de imágenes cargadas — evita releer el disco cada frame
+_cache_imgs = {}
+
+# Velocidad de animación por defecto en ms por frame
+# Puede sobreescribir por unidad si se quiere ritmos distintos
+MS_POR_FRAME_TORRE  = 120
+MS_POR_FRAME_TROPA  = 100
+
+def _cargar_frame_raw(faccion, nombre, estado_anim, frame_num, direccion=None):
+    dir_archivo = 'izq' if direccion == 'der' else direccion
+    
+    if estado_anim is None:
+        ruta = f'assets/img/sprites/{faccion}/{nombre}.png'
+    elif dir_archivo:
+        ruta = f'assets/img/sprites/{faccion}/{nombre}_{estado_anim}_{dir_archivo}_{frame_num}.png'
+    else:
+        ruta = f'assets/img/sprites/{faccion}/{nombre}_{estado_anim}_{frame_num}.png'
+
+    if ruta in _cache_imgs:
+        return _cache_imgs[ruta]
+    try:
+        img = Image.open(ruta).convert('RGBA')
+        _cache_imgs[ruta] = img
+        return img
+    except Exception as ex:
+        _cache_imgs[ruta] = None
+        return None
+
+def _cargar_frame(faccion, nombre, estado_anim, frame_num, direccion=None):
+    """Alias de _cargar_frame_raw para compatibilidad."""
+    return _cargar_frame_raw(faccion, nombre, estado_anim, frame_num, direccion)
+
+def _contar_frames(faccion, nombre, estado_anim):
+    """
+    Cuenta cuántos frames tiene una animación probando de 0 en adelante
+    hasta que no encuentre el archivo.
+    """
+    if estado_anim is None:
+        return 1
+    count = 0
+    while True:
+        ruta = f'assets/img/sprites/{faccion}/{nombre}_{estado_anim}_{count}.png'
+        if ruta in _cache_imgs:
+            if _cache_imgs[ruta] is not None:
+                count += 1
+            else:
+                break
+        else:
+            try:
+                img = Image.open(ruta).convert('RGBA')
+                _cache_imgs[ruta] = img
+                count += 1
+            except:
+                _cache_imgs[ruta] = None
+                break
+    return max(count, 1)
+
+
+class AnimadorSprite:
+    """
+    Maneja el estado de animación de una entidad (tropa o torre).
+    Cada entidad tiene su propio AnimadorSprite.
+    """
+    def __init__(self, faccion, nombre, ms_por_frame=100, tiene_direcciones=False):
+        self.faccion           = faccion
+        self.nombre            = nombre
+        self.ms_por_frame      = ms_por_frame
+        self.estado_anim       = None
+        self.frame_actual      = 0
+        self.total_frames      = 0
+        self.ms_acum           = 0
+        self.tiene_direcciones = tiene_direcciones
+        self.direccion         = 'abajo'   # dirección actual
+
+    def set_estado(self, estado_anim, direccion=None):
+        if direccion:
+            self.direccion = direccion
+        cambio_estado = estado_anim != self.estado_anim
+        if cambio_estado:
+            self.estado_anim  = estado_anim
+            self.frame_actual = 0
+            self.total_frames = self._contar_frames()
+
+    def set_direccion(self, direccion):
+        if direccion != self.direccion:
+            self.direccion    = direccion
+            self.frame_actual = 0
+            self.total_frames = self._contar_frames()
+
+    def _contar_frames(self):
+        count = 0
+        while True:
+            dir_usar = self.direccion if self.tiene_direcciones else None
+            if _cargar_frame_raw(self.faccion, self.nombre,
+                                self.estado_anim, count, dir_usar) is None:
+                break
+            count += 1
+        return max(count, 1)
+
+    def tick(self, ms_delta):
+        if self.total_frames <= 1:
+            return
+        self.ms_acum += ms_delta
+        if self.ms_acum >= self.ms_por_frame:
+            self.ms_acum      = 0
+            self.frame_actual = (self.frame_actual + 1) % self.total_frames
+
+    def get_imagen(self, ancho, alto):
+        dir_usar = self.direccion if self.tiene_direcciones else None
+        img_pil  = _cargar_frame_raw(self.faccion, self.nombre,
+                                      self.estado_anim, self.frame_actual, dir_usar)
+        if img_pil is None:
+            return None
+        key_tk = (self.faccion, self.nombre, self.estado_anim,
+                   self.frame_actual, dir_usar, ancho, alto)
+        if key_tk not in _cache_imgs:
+            img_r = img_pil.resize((ancho, alto), Image.NEAREST)
+            _cache_imgs[key_tk] = ImageTk.PhotoImage(img_r)
+        return _cache_imgs[key_tk]
+
+    def get_imagen_flip(self, ancho, alto, flip_h=False):
+        """Para tropas: devuelve la imagen espejada horizontalmente si flip_h=True."""
+        dir_usar = self.direccion if self.tiene_direcciones else None
+        img_pil  = _cargar_frame_raw(self.faccion, self.nombre,
+                                      self.estado_anim, self.frame_actual, dir_usar)
+        if img_pil is None:
+            return None
+        if flip_h:
+            img_pil = img_pil.transpose(Image.FLIP_LEFT_RIGHT)
+        key_tk = (self.faccion, self.nombre, self.estado_anim,
+                   self.frame_actual, dir_usar, ancho, alto, flip_h)
+        if key_tk not in _cache_imgs:
+            img_r = img_pil.resize((ancho, alto), Image.NEAREST)
+            _cache_imgs[key_tk] = ImageTk.PhotoImage(img_r)
+        return _cache_imgs[key_tk]
 
 # -----------------------------------------------------------------------------------
 # FUNCIÓN PRINCIPAL — llamada desde main.py
@@ -136,6 +283,10 @@ def _construir_pantalla(root, juego_frame, partida, estado, volver_callback=None
         # alguna de esas funciones necesite volver al menú, puede sacarla
         # de ctx con ctx['volver_callback'] sin tener que reimportar nada.
         'volver_callback': volver_callback,
+        'animadores_tropas':    {},   # pos -> AnimadorSprite
+        'animadores_torres':    {},   # pos_grid -> AnimadorSprite
+        'ultimo_tick_ms':       0,
+        'loop_animacion_activo': False,
         'imgs':           {},     # referencias a ImageTk para que no se descarten
     }
 
@@ -144,6 +295,48 @@ def _construir_pantalla(root, juego_frame, partida, estado, volver_callback=None
     canvas.bind('<Button-1>',   lambda e: _on_click_canvas(e, ctx))
     canvas.bind('<Button-3>',   lambda e: _on_click_derecho(e, ctx))
     canvas.bind('<Motion>',     lambda e: _on_hover(e, ctx))
+
+# ---------- Para las animaciones -------
+
+def _iniciar_loop_animacion(ctx):
+    """
+    Corre a ~60fps actualizando los frames de todos los animadores
+    y redibujando el canvas. Se detiene cuando la fase deja de ser COMBATE.
+    """
+    import time
+    MS_LOOP = 16   # ~60fps
+
+    ctx['loop_animacion_activo'] = True
+    ctx['ultimo_tick_ms']        = int(time.time() * 1000)
+
+    def tick():
+        if not ctx['canvas'].winfo_exists():
+            return
+        if not ctx['loop_animacion_activo']:
+            return
+
+        import time
+        ahora    = int(time.time() * 1000)
+        ms_delta = ahora - ctx['ultimo_tick_ms']
+        ctx['ultimo_tick_ms'] = ahora
+
+        # Avanzar animadores de tropas
+        for anim in ctx['animadores_tropas'].values():
+            anim.tick(ms_delta)
+
+        # Avanzar animadores de torres
+        for anim in ctx['animadores_torres'].values():
+            anim.tick(ms_delta)
+
+        _dibujar_todo(ctx)
+
+        ctx['canvas'].after(MS_LOOP, tick)
+
+    ctx['canvas'].after(MS_LOOP, tick)
+
+
+def _detener_loop_animacion(ctx):
+    ctx['loop_animacion_activo'] = False
 
 # -----------------------------------------------------------------------------------
 # DIBUJO DEL GRID
@@ -219,30 +412,64 @@ def _dibujar_todo(ctx):
         )
 
 def _dibujar_estructura(canvas, x, y, T, e, colores, ctx):
-    key = (e.nombre.lower()
-           .replace(' ', '_')
-           .replace('ó', 'o')
-           .replace('ñ', 'n')
-           .replace('á', 'a'))
+    key   = _normalizar_nombre(e.nombre)
+    color = {'torre_central': colores['torre_central'], 'canon': colores['canon'],
+             'torre_rayo': colores['torre_rayo'], 'torre_fuego': colores['torre_fuego'],
+             'muro': colores['muro']}.get(key, '#888888')
 
-    color_map = {
-        'torre_central': colores['torre_central'],
-        'canon':         colores['canon'],
-        'torre_rayo':    colores['torre_rayo'],
-        'torre_fuego':   colores['torre_fuego'],
-        'muro':          colores['muro'],
-    }
-    color = color_map.get(key, '#888888')
+    img_pil_base = _cargar_frame_raw(e.faccion, key, None, 0)
+    if img_pil_base:
+        ratio        = img_pil_base.width / img_pil_base.height
+        alto_sprite  = int(T * (1.0 if e.es_muro else 1.0))
+        ancho_sprite = int(alto_sprite * ratio)
+        if ancho_sprite > T:
+            ancho_sprite = T
+            alto_sprite  = int(T / ratio)
+    else:
+        alto_sprite  = int(T * (1.0 if e.es_muro else 1.0))
+        ancho_sprite = T
 
-    alto_sprite  = int(T * (1.0 if e.es_muro else 1.8))
-    ancho_sprite = T
-    ruta         = f'assets/img/{e.faccion}_{key}.png'
-    img_tk       = _cargar_sprite(ruta, ancho_sprite, alto_sprite)
+    img_tk = None
+
+    if e.es_muro or e.nombre == 'Torre Central':
+        img_pil = _cargar_frame_raw(e.faccion, key, None, 0)
+        if img_pil:
+            key_tk = (e.faccion, key, None, 0, ancho_sprite, alto_sprite)
+            if key_tk not in _cache_imgs:
+                img_r = img_pil.resize((ancho_sprite, alto_sprite), Image.NEAREST)
+                _cache_imgs[key_tk] = ImageTk.PhotoImage(img_r)
+            img_tk = _cache_imgs[key_tk]
+    else:
+        anim             = ctx.get('animadores_torres', {}).get(e.pos)
+        estado_anim_usar = anim.estado_anim if anim else 'ataque'
+        frame_usar       = anim.frame_actual if anim else 0
+        dir_usar         = (anim.direccion if anim.tiene_direcciones else None) if anim else 'abajo'
+
+        img_pil = _cargar_frame_raw(e.faccion, key, estado_anim_usar, frame_usar, dir_usar)
+        if img_pil:
+            flip = (dir_usar == 'der')
+            if flip:
+                img_pil = img_pil.transpose(Image.FLIP_LEFT_RIGHT)
+            key_tk = (e.faccion, key, estado_anim_usar, frame_usar, dir_usar, ancho_sprite, alto_sprite)
+            if key_tk not in _cache_imgs:
+                img_r = img_pil.resize((ancho_sprite, alto_sprite), Image.NEAREST)
+                _cache_imgs[key_tk] = ImageTk.PhotoImage(img_r)
+            img_tk = _cache_imgs[key_tk]
+
+        # Fallback fase colocación: probar ataque_abajo_0, ataque_arriba_0, etc.
+        if img_tk is None:
+            for dir_fallback in ['abajo', 'arriba', 'izq', None]:
+                img_pil = _cargar_frame_raw(e.faccion, key, 'ataque', 0, dir_fallback)
+                if img_pil:
+                    key_tk = (e.faccion, key, 'fallback', dir_fallback, ancho_sprite, alto_sprite)
+                    if key_tk not in _cache_imgs:
+                        img_r = img_pil.resize((ancho_sprite, alto_sprite), Image.NEAREST)
+                        _cache_imgs[key_tk] = ImageTk.PhotoImage(img_r)
+                    img_tk = _cache_imgs[key_tk]
+                    break
 
     if img_tk:
-        cx     = x + T // 2
-        base_y = y + T
-        canvas.create_image(cx, base_y, image=img_tk, anchor='s')
+        canvas.create_image(x + T//2, y + T, image=img_tk, anchor='s')
     else:
         pad = 6 if e.es_muro else 4
         canvas.create_rectangle(x+pad, y+pad, x+T-pad, y+T-pad,
@@ -255,39 +482,52 @@ def _dibujar_estructura(canvas, x, y, T, e, colores, ctx):
 
 
 def _dibujar_tropa(canvas, x, y, T, t, colores, ctx):
-    key = (t.nombre.lower()
-           .replace('á', 'a').replace('é', 'e')
-           .replace('í', 'i').replace('ú', 'u'))
+    key   = _normalizar_nombre(t.nombre)
+    color = {'basica': colores.get('basica', '#2ecc71'),
+             'tanque': colores.get('tanque', '#27ae60'),
+             'samurai': colores.get('samurai', '#f1c40f')}.get(key, '#aaaaaa')
 
-    color_map = {
-        'basica':  colores.get('basica',  '#2ecc71'),
-        'tanque':  colores.get('tanque',  '#27ae60'),
-        'samurai': colores.get('samurai', '#f1c40f'),
-    }
-    color = color_map.get(key, '#aaaaaa')
-
-    mult = {'tanque': 1.8, 'samurai': 1.6, 'basica': 1.5}.get(key, 1.6)
+    mult         = {'tanque': 1.8, 'samurai': 1.6, 'basica': 1.5}.get(key, 1.6)
     alto_sprite  = int(T * mult)
-    ancho_sprite = int(alto_sprite * 1.0)   # 1:1 por defecto; se corrige con la imagen real
-    ruta         = f'assets/img/{t.faccion}_{key}.png'
+    ancho_sprite = alto_sprite
+    img_tk       = None
 
-    # Para la tropa necesitamos mantener proporción, así que la cargamos sin cache fija
-    img_tk = None
-    try:
-        img_pil      = Image.open(ruta).convert('RGBA')
-        ancho_sprite = int(alto_sprite * img_pil.width / img_pil.height)
+    anim = ctx.get('animadores_tropas', {}).get(t.pos)
+    estado_anim_usar = anim.estado_anim if anim else 'caminar'
+    frame_usar       = anim.frame_actual if anim else 0
+
+    img_pil_original = _cargar_frame_raw(t.faccion, key, estado_anim_usar, frame_usar)
+    if img_pil_original:
+        ancho_sprite = int(alto_sprite * img_pil_original.width / img_pil_original.height)
         if ancho_sprite > T:
             ancho_sprite = T
-            alto_sprite  = int(T * img_pil.height / img_pil.width)
-        key_cache = (ruta, ancho_sprite, alto_sprite)
-        if key_cache in _cache_sprites:
-            img_tk = _cache_sprites[key_cache]
-        else:
-            img_r  = img_pil.resize((ancho_sprite, alto_sprite), Image.NEAREST)
-            img_tk = ImageTk.PhotoImage(img_r)
-            _cache_sprites[key_cache] = img_tk
-    except:
-        pass
+            alto_sprite  = int(T * img_pil_original.height / img_pil_original.width)
+
+        flip   = getattr(t, 'direccion_visual', 'der') == 'izq'
+        key_tk = (t.faccion, key, estado_anim_usar, frame_usar, ancho_sprite, alto_sprite, flip)
+
+        if key_tk not in _cache_imgs:
+            img_r = img_pil_original.resize((ancho_sprite, alto_sprite), Image.NEAREST)
+            if flip:
+                img_r = img_r.transpose(Image.FLIP_LEFT_RIGHT)
+            _cache_imgs[key_tk] = ImageTk.PhotoImage(img_r)
+
+        img_tk = _cache_imgs[key_tk]
+
+
+    # Sin animador (fase de colocación): mostrar caminar_0 estático
+    if img_tk is None:
+        img_pil = _cargar_frame_raw(t.faccion, key, 'caminar', 0)
+        if img_pil:
+            ancho_sprite = int(alto_sprite * img_pil.width / img_pil.height)
+            if ancho_sprite > T:
+                ancho_sprite = T
+                alto_sprite  = int(T * img_pil.height / img_pil.width)
+            key_tk = (t.faccion, key, 'caminar', 0, ancho_sprite, alto_sprite, False)
+            if key_tk not in _cache_imgs:
+                img_r = img_pil.resize((ancho_sprite, alto_sprite), Image.NEAREST)
+                _cache_imgs[key_tk] = ImageTk.PhotoImage(img_r)
+            img_tk = _cache_imgs[key_tk]
 
     if img_tk:
         cx     = int(x) + T // 2
@@ -302,7 +542,6 @@ def _dibujar_tropa(canvas, x, y, T, t, colores, ctx):
                             fill='white', font=('Minecraft', max(8, T//5)))
 
     _dibujar_barra_vida(canvas, x, y, T, t.vida, t.vida_max)
-
     if t.quemando > 0:
         canvas.create_text(int(x)+T-8, int(y)+10, text='🔥', font=('Arial', 9))
     if t.habilidad_activa:
@@ -571,25 +810,82 @@ VELOCIDAD_LERP = 0.18
 MS_ENTRE_TURNOS = 800
 MS_ANIMACION    = 16   # ~60fps para la animación
 
+# Esto es por si acaso para que no se buggee todo
+def _normalizar_nombre(nombre):
+    return (nombre.lower()
+            .replace(' ', '_')
+            .replace('ó', 'o')
+            .replace('á', 'a')
+            .replace('é', 'e')
+            .replace('í', 'i')
+            .replace('ú', 'u')
+            .replace('ñ', 'n'))
+
 def _iniciar_combate_automatico(ctx):
     MS_ENTRE_TURNOS = 600
+    estado          = ctx['estado']
+
+    # Calcular posición de la torre central para saber hacia dónde apuntan las torres
+    tc_pos = estado.grid.torre_central_pos   # coords del grid (local)
+
+    def direccion_hacia_tc(pos_torre):
+        """Dirección que debe mirar una torre para apuntar hacia la torre central."""
+        if tc_pos is None:
+            return 'abajo'
+        df = tc_pos.fila - pos_torre.fila
+        dc = tc_pos.col  - pos_torre.col
+        if abs(df) >= abs(dc):
+            return 'abajo' if df > 0 else 'arriba'
+        else:
+            return 'der' if dc > 0 else 'izq'
+
+    # Inicializar animadores de tropas
+    for pos, tropa in estado.zona.tropas.items():
+        key  = _normalizar_nombre(tropa.nombre)
+        anim = AnimadorSprite(tropa.faccion, key,
+                               ms_por_frame=MS_POR_FRAME_TROPA,
+                               tiene_direcciones=False)
+        anim.set_estado('caminar')
+        ctx['animadores_tropas'][pos] = anim
+
+    # Inicializar animadores de torres
+    for pos, estructura in estado.grid.celdas.items():
+        if estructura.es_muro or estructura.nombre == 'Torre Central':
+            continue
+        key              = _normalizar_nombre(estructura.nombre)
+        con_dir          = key in TORRES_CON_DIRECCION.get(estructura.faccion, [])
+        anim             = AnimadorSprite(estructura.faccion, key,
+                                          ms_por_frame=MS_POR_FRAME_TORRE,
+                                          tiene_direcciones=con_dir)
+        dir_inicial      = direccion_hacia_tc(pos) if con_dir else 'abajo'
+        anim.set_estado('ataque', direccion=dir_inicial)
+        ctx['animadores_torres'][pos] = anim
+
+    _iniciar_loop_animacion(ctx)
 
     def siguiente_turno():
-
-        '''DEBUG, RECORDAR BORRAR'''
-        
-        print(f'turno {ctx["estado"].turno}, fase: {ctx["estado"].fase}')
-        
-        '''DEBUG, RECORDAR BORRAR'''
-        
         if not ctx['canvas'].winfo_exists():
             return
-        if ctx['estado'].fase != game.EstadoRonda.FASE_COMBATE:
+        if estado.fase != game.EstadoRonda.FASE_COMBATE:
+            _detener_loop_animacion(ctx)
             _construir_panel(ctx)
             _dibujar_todo(ctx)
             return
 
-        resultado = ctx['estado'].ejecutar_turno()
+        resultado = estado.ejecutar_turno()
+
+        # Reubicar animadores de tropas según nuevas posiciones
+        nuevos = {}
+        for pos, tropa in estado.zona.tropas.items():
+            if pos in ctx['animadores_tropas']:
+                nuevos[pos] = ctx['animadores_tropas'][pos]
+            else:
+                key  = _normalizar_nombre(tropa.nombre)
+                anim = AnimadorSprite(tropa.faccion, key,
+                                       ms_por_frame=MS_POR_FRAME_TROPA)
+                anim.set_estado('caminar')
+                nuevos[pos] = anim
+        ctx['animadores_tropas'] = nuevos
 
         msgs = []
         if resultado.get('tropas_destruidas'):
@@ -597,11 +893,10 @@ def _iniciar_combate_automatico(ctx):
         if resultado.get('torres_destruidas'):
             msgs.append(f"Torres: {', '.join(resultado['torres_destruidas'])}")
         _mostrar_msg('  |  '.join(msgs), ctx)
-
-        _dibujar_todo(ctx)
         _construir_panel(ctx)
 
         if resultado.get('fin'):
+            _detener_loop_animacion(ctx)
             return
 
         ctx['canvas'].after(MS_ENTRE_TURNOS, siguiente_turno)
