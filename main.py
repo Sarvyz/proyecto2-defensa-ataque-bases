@@ -52,25 +52,8 @@ from programs import config
 
 # Variables globales de sesión
 
-'''
-DEBUG, RECORDAR QUITAR ESTE COMENTARIO CUANDO TERMINE
 user1 = None
 user2 = None
-DEBUG, RECORDAR QUITAR ESTE COMENTARIO CUANDO TERMINE
-'''
-user1 = [
-        "yosep",
-        "yosep",
-        4,
-        2
-    ]
-
-user2 =     [
-        "sarv",
-        "sarv",
-        3,
-        4
-    ]
 
 # Creando el root
 root = tk.Tk()
@@ -1355,10 +1338,10 @@ def construir_menu():
     def dibujar_botones(w, h):
         canvas_menu.delete('all')
         
-        # IMAGEN DE FONDO — descomentá esto cuando la tengas lista:
-        # img_fondo = Image.open('assets/img/menu_fondo.png').convert('RGBA').resize((w, h), Image.NEAREST)
-        # canvas_menu._fondo = ImageTk.PhotoImage(img_fondo)
-        # canvas_menu.create_image(0, 0, image=canvas_menu._fondo, anchor='nw')
+        # IMAGEN DE FONDO — descomentar si está comentado:
+        img_fondo = Image.open('assets/img/portada.png').convert('RGBA').resize((w, h), Image.NEAREST)
+        canvas_menu._fondo = ImageTk.PhotoImage(img_fondo)
+        canvas_menu.create_image(0, 0, image=canvas_menu._fondo, anchor='nw')
         
         # ... resto del código
 

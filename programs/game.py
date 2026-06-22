@@ -28,8 +28,8 @@ BONO_RONDA_DEFENSOR = 150   # dinero fijo que recibe el defensor al empezar cada
 DINERO_POR_DAÑO      = 0.5  # por cada punto de daño que el atacante le hizo a torres/muros/base
                              # en la ronda anterior, recibe esta fracción de dinero extra al empezar la siguiente
 
-RECOMPENSA_TORRE_DESTRUIDA = 50
-RECOMPENSA_TROPA_DESTRUIDA = 30
+RECOMPENSA_TORRE_DESTRUIDA = 20
+RECOMPENSA_TROPA_DESTRUIDA = 50
 
 PROB_BALA_RAPIDA       = 0.15
 MULT_BALA_RAPIDA_DMG   = 2.0
