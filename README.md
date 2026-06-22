@@ -1,5 +1,5 @@
 # proyecto2-defensa-ataque-bases
-Nombre del proyecto: No definido
+Nombre del proyecto: FRACTURE FRONTS
 
 Nombre de los estudiantes:
 Evan Alejandro Umaña Sojo
